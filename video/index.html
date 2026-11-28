@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AnswerLoop | プロモーション</title>
+<link rel="stylesheet" href="style.css">
+<script defer src="sound.js"></script>
+<script defer src="engine.js"></script>
+</head>
+<body>
+<main id="viewport" aria-label="AnswerLoop プロモーション動画">
+  <div id="stage">
+    <div class="ambience" aria-hidden="true"></div>
+    <div class="artboard">
+      <header class="mast"><span id="identity"></span><small>デモ用の架空データ</small></header>
+      <div id="scenes"></div>
+
+    </div>
+    <div id="wipe" aria-hidden="true"></div>
+    <div id="safe-guide" aria-hidden="true"></div>
+    <div id="poster" hidden>
+      <button id="overlay" type="button"><span class="play-circle" aria-hidden="true"></span><span id="play-label">再生</span></button>
+    </div>
+  </div>
+</main>
+<div id="controls">
+  <div class="control-row">
+    <button type="button" id="play">再生</button>
+    <button type="button" id="replay">リプレイ</button>
+    <label class="scrub"><span class="sr-only">再生位置</span><input id="seek" type="range" min="0" step=".01" value="0"></label>
+    <output id="time"></output>
+    <button type="button" id="mute" aria-pressed="false">音 ON</button>
+    <a id="switch"></a>
+    <a id="cut"></a>
+    <button type="button" id="record">録画して書き出す</button>
+  </div>
+  <small>録画する場合は共有先にこのタブを選択してください。</small>
+  <span id="status" role="status"></span>
+</div>
+</body>
+</html>
