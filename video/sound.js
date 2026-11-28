@@ -34,35 +34,43 @@ async function loadNarration(duration, starts) {
 function buildScore(duration, timing, rests) {
   const music = [];
   const effects = [];
-  const add = (list, time, type, note) => list.push({time, type, note});
-  const fx = (time, type, note) => add(effects, time, type, note);
-  for (const time of [0, .5]) add(music, time, 'key', time ? 69 : 62);
-
-  const harmony = [[62, 69, 66, 76], [59, 66, 69, 73], [55, 62, 66, 69], [57, 64, 71, 73]];
-  for (let beat = 4; beat < (timing.end - .55) * 4; beat++) {
-    const time = beat / 4;
-    if (rests.some(([from, to]) => time >= from - .18 && time < to)) continue;
-    const chord = harmony[Math.floor(beat / 8) % harmony.length];
-    add(music, time, 'pluck', chord[beat % chord.length]);
-    if (beat % 2 === 0) add(music, time, 'bass', chord[0] - 24);
-    if (time > timing.answer && beat % 4 === 0) add(music, time, 'kick');
+  const beat = 60 / 124;
+  // D major: I–V–vi–IV, one chord per bar.
+  const harmony = [[50, 66, 69, 74], [45, 64, 69, 73], [47, 66, 71, 74], [43, 62, 67, 71]];
+  for (let step = 0; step * beat / 2 < timing.end; step++) {
+    const time = step * beat / 2;
+    if (rests.some(([from, to]) => time >= from && time < to)) continue;
+    const [root, third, fifth, top] = harmony[Math.floor(step / 8) % harmony.length];
+    const position = step % 8;
+    const add = (type, note) => music.push({time, type, note});
+    if (position % 2 === 1) add('bass', position === 7 ? root + 7 : root);
+    if (position % 4 === 0) add('kick');
+    if (position % 4 === 2) add('clap');
+    const melody = [fifth, third, null, top, fifth, null, third, fifth];
+    if (melody[position]) add('pluck', melody[position]);
+    if (position === 3 || position === 7) add('bell', top + 12);
   }
 
-  fx(timing.wipe - .5, 'rise');
-  fx(timing.wipe - .42, 'reverse');
-  fx(timing.reply, 'fall');
-  fx(timing.answer, 'impact');
-  add(music, timing.answer, 'kick');
-  fx(timing.answer, 'shimmer', 74);
-  timing.chips.forEach((time, i) => fx(time, 'glock', [86, 90, 93][i]));
-  if (duration === 15) fx(timing.approve, 'key', 66);
-  fx(duration === 15 ? 8.07 : timing.approve, 'bell', 78);
-  fx(timing.publish, 'bell', 81);
-  if (duration === 30) fx(14.60, 'key', 69);
-  const logo = timing.end;
-  fx(logo, 'bell', 74);
-  fx(logo + .16, 'bell', 81);
-  fx(logo + .16, 'shimmer', 74);
+  const fx = (time, type, note) => effects.push({time, type, note});
+  const chime = time => [74, 78, 81].forEach((note, i) => fx(time + .085 * i, 'bell', note));
+  fx(.04, 'bubble');
+  fx(duration === 15 ? 1.36 : 1.64, 'thump');
+  fx(timing.reply - .24, 'swipe');
+  fx(timing.answer, 'stick');
+  if (duration === 15) fx(timing.proof, 'swipe');
+  timing.chips.forEach((time, i) => fx(time, 'glock', [81, 85, 88][i]));
+  chime(timing.approve);
+  if (duration === 30) {
+    fx(timing.review, 'swipe');
+    fx(14.60, 'stick');
+    fx(timing.phone, 'swipe');
+    fx(17.3, 'bubble');
+  }
+  fx(timing.faq, 'thump');
+  fx(timing.diff, 'swipe');
+  fx(timing.publish, 'stick');
+  fx(timing.end, 'stick');
+  chime(timing.end + .10);
   return {music, effects};
 }
 
@@ -98,7 +106,7 @@ function synthesize(context, destination, score, narration, start, duration, res
     if (to < duration) gate.gain.linearRampToValueAtTime(1, start + to + .008);
   }
 
-  const delay = new DelayNode(context, {delayTime:.1875});
+  const delay = new DelayNode(context, {delayTime:60 / 124 / 2});
   const feedback = gain(.17);
   delay.connect(feedback).connect(delay);
   delay.connect(gain(.10)).connect(music);
@@ -118,12 +126,13 @@ function synthesize(context, destination, score, narration, start, duration, res
     return buffer;
   }
 
-  const room = noise(.65, 2, p => Math.exp(-8 * p) * (1 - p));
-  const wet = new DelayNode(context, {delayTime:.015});
-  wet.connect(new ConvolverNode(context, {buffer:room}))
-    .connect(filter('highpass', 250)).connect(filter('lowpass', 6000)).connect(effects);
+  // Fixed taps keep the chime tails repeatable during offline rendering.
+  const wet = gain();
+  for (const [time, level] of [[.027, .18], [.053, .11], [.089, .07]]) {
+    const tap = new DelayNode(context, {delayTime:time});
+    wet.connect(tap).connect(gain(level)).connect(effects);
+  }
   const white = noise(.52, 1, () => 1);
-  const reversed = noise(.42, 1, p => Math.exp(4 * (p - 1)));
 
   function playCue({time, type, note}, output) {
     const at = start + time;
@@ -144,11 +153,7 @@ function synthesize(context, destination, score, narration, start, duration, res
       const oscillator = new OscillatorNode(context, {frequency:from, type:options.wave ?? 'sine'});
       oscillator.frequency.setValueAtTime(from, at);
       oscillator.frequency.exponentialRampToValueAtTime(to, at + length);
-      const lowpass = options.lowpass;
-      if (lowpass) {
-        lowpass.frequency.setValueAtTime(lowpass.frequency.value, at);
-        envelope(oscillator.connect(lowpass), length, level, options);
-      } else envelope(oscillator, length, level, options);
+      envelope(oscillator, length, level, options);
       oscillator.start(at);
       oscillator.stop(at + length);
     }
@@ -163,37 +168,35 @@ function synthesize(context, destination, score, narration, start, duration, res
     }
 
     switch (type) {
-      case 'key':
-        grain(white, filter('bandpass', 2200, 1.1), 1520, .06, .17);
-        tone(f, f, .18, .15, {wave:'triangle'});
+      case 'pluck':
+        tone(f, f, .15, .21, {wave:'triangle', echo:true});
+        tone(f * 2, f * 2, .085, .058, {wave:'triangle'});
         break;
-      case 'pluck': {
-        const lowpass = filter('lowpass', 2800);
-        lowpass.frequency.exponentialRampToValueAtTime(900, at + .13);
-        tone(f, f, .17, .19, {wave:'triangle', echo:true});
-        // A short second harmonic gives the pick definition under speech.
-        tone(f * 2, f * 2, .10, .03, {lowpass});
-        break;
-      }
       case 'bass':
-        tone(f, f, .29, .24, {attack:.012});
-        tone(f, f, .20, .04, {wave:'triangle', attack:.012});
+        tone(f, f, .205, .27, {attack:.009});
+        tone(f, f, .14, .11, {wave:'triangle', attack:.008});
         break;
       case 'kick':
-        tone(117, 47, .19, .28, {attack:.003});
+        tone(110, 46, .17, .25, {attack:.003});
         break;
-      case 'impact':
-        tone(390, 175, .095, .12, {wave:'triangle'});
-        grain(white, filter('bandpass', 1970), 1010, .09, .11);
+      case 'clap':
+        grain(white, filter('bandpass', 1600, .65), 1100, .105, .20);
+        grain(white, filter('highpass', 3800), 2200, .05, .12);
         break;
-      case 'rise':
-        grain(white, filter('bandpass', 800), 5000, .5, .12, true);
+      case 'bubble':
+        tone(740, 1030, .065, .20);
+        tone(1400, 1500, .038, .045);
         break;
-      case 'reverse':
-        grain(reversed, filter('highpass', 3000), 4700, .42, .10, true);
+      case 'swipe':
+        grain(white, filter('bandpass', 1100, .65), 4800, .21, .29, true);
         break;
-      case 'fall':
-        grain(white, filter('bandpass', 4000), 500, .35, .11);
+      case 'stick':
+        tone(260, 185, .085, .23, {wave:'triangle'});
+        grain(white, filter('bandpass', 2600, .75), 1150, .065, .22);
+        break;
+      case 'thump':
+        tone(130, 57, .19, .38, {attack:.004});
+        grain(white, filter('lowpass', 1500), 600, .08, .13);
         break;
       case 'glock':
         tone(f, f, .27, .20, {attack:.002, send:.20});
@@ -201,19 +204,8 @@ function synthesize(context, destination, score, narration, start, duration, res
         tone(f * 5.40, f * 5.40, .048, .014, {attack:.002});
         break;
       case 'bell':
-        tone(f, f, .48, .20, {attack:.004, send:.24});
-        tone(f * 2.01, f * 2.01, .19, .041, {send:.15});
-        break;
-      case 'shimmer':
-        // Route the octave directly to the wet path.
-        const octave = new OscillatorNode(context, {frequency:f * 2});
-        const send = gain(0);
-        octave.connect(send).connect(wet);
-        send.gain.setValueAtTime(0, at);
-        send.gain.linearRampToValueAtTime(.12, at + .020);
-        send.gain.exponentialRampToValueAtTime(.001, at + .31);
-        octave.start(at);
-        octave.stop(at + .32);
+        tone(f, f, .48, .20, {attack:.004, send:output === effects ? .24 : 0});
+        tone(f * 2.01, f * 2.01, .19, .041, {send:output === effects ? .15 : 0});
         break;
     }
   }

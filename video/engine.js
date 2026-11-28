@@ -66,59 +66,54 @@ fit();
 const smooth = (t, at, span) => bezier(phase(t, at, span), .2, 0, 0, 1);
 const billing = {
   question: '追加料金はいつ発生しますか？',
-  answer: ['参加した時点で課金対象。', '追加日から月末まで日割り。', '次回の請求に加算します。'],
   evidence: ['料金ページ', 'FAQ', '利用規約']
 };
 const starts = short ? [.25, 3, 6.1, 9.4, 12.3] : [.25, 4.9, 10.8, 15.9, 20.6, 27];
 const timing = short
-  ? {wipe:2.4, reply:2.9, answer:3.8, proof:6, chips:[6.43, 6.76, 7.10], approve:7.70, faq:9.2, diff:9.8, publish:11.83, end:12}
-  : {wipe:4.5, reply:4.95, answer:5.9, proof:6.7, chips:[7.2, 7.55, 7.9], approve:9.15, review:10, phone:15.5, faq:20, diff:20.5, publish:24.55, end:26.5};
+  ? {reply:2.9, answer:3.8, proof:6, chips:[6.43, 6.76, 7.10], approve:7.70, faq:9.2, diff:9.8, publish:11.83, end:12}
+  : {reply:4.95, answer:5.9, chips:[7.2, 7.55, 7.9], approve:9.15, review:10, phone:15.5, faq:20, diff:20.5, publish:24.55, end:26.5};
 const rests = short ? [] : [[14.10, 14.60]];
-const app = (label, body) => `<article class="app"><header class="chrome"><b>TaskNest</b><span>${label}</span></header><div class="content">${body}</div></article>`;
-const question = (label, attrs = '') => `<div class="question" ${attrs}><strong>${billing.question}</strong><small>${label}</small></div>`;
-const caption = (lines, mode = 'long') => `<h1 class="${mode}">${lines.map(line =>
-  `<span class="line">${mode === 'blur' ? [...line].map(char => `<span class="glyph">${char}</span>`).join('') : line}</span>`).join('')}</h1><i class="underline"></i>`;
-const scene = (name, copy, body) => `<section class="scene ${name}" hidden><div class="copy">${copy}</div><div class="camera">${body}</div></section>`;
-const inbox = `<div class="mail-stack">
-  ${question('受信', 'data-mail="0"')}${question('受信', 'data-mail="1"')}${question('受信', 'data-mail="2"')}
-  <div class="question mail-count"><span>同じ料金質問</span><b><span class="count number">0</span> 件</b></div>
-</div>`;
-const logo = `<svg viewBox="0 0 100 100" aria-hidden="true"><path pathLength="1"
+const caption = lines => `<h1>${lines.map(line => `<span class="line">${line}</span>`).join('')}</h1>`;
+const scene = (name, color, copy, body) => `<section class="scene ${name}" data-color="${color}" hidden>
+  <div class="copy">${copy}</div><div class="camera">${body}</div></section>`;
+const card = (label, body) => `<article class="app"><header class="chrome">${label}</header>${body}</article>`;
+const circle = `<svg class="doodle circle" viewBox="0 0 300 130" preserveAspectRatio="none" aria-hidden="true">
+  <path pathLength="1" d="M237 19C176-3 52 8 21 46c-37 45 27 73 116 72 83-1 159-28 145-67-7-21-40-37-79-43"/></svg>`;
+const arrow = `<svg class="doodle arrow" viewBox="0 0 126 75" aria-hidden="true">
+  <path pathLength="1" d="M7 14c27 40 67 48 108 27M86 32l31 7-21 26"/></svg>`;
+const logo = `<svg class="doodle logo" viewBox="0 0 100 100" aria-hidden="true"><path pathLength="1"
   d="M79 34a33 33 0 1 0 2 29 M80 19v16H64 M39 39h22a7 7 0 0 1 7 7v10a7 7 0 0 1-7 7H48l-11 8v-9a7 7 0 0 1-5-7v-9a7 7 0 0 1 7-7Z"/></svg>`;
+const inbox = card('TaskNest ／ 受信箱', `<div class="inbox-line"><strong>${billing.question}</strong>
+  <span class="tally"><b>14</b> 件${circle}</span></div>`);
+const evidence = `<div class="sources">${billing.evidence.map(label => `<span class="source">${label}</span>`).join('')}</div>`;
+const approval = '<span class="stamp">✓ 承認済み</span>';
 
 $('identity').textContent = 'AnswerLoop';
 $('scenes').innerHTML = [
-  scene('hook', caption(['また、同じ料金の質問。'], 'hero') +
-    (short ? '' : '<p class="thought">前の返信、どこだっけ。</p>'), app('受信箱', inbox)),
-  scene('reply', caption(short ? ['送信する前に、', 'もう答えが出てる。'] :
-    ['アンサーループなら、送信する前に、', '根拠つきで答えが出ます。']), app('ヘルプチャット', `
-    ${question('未送信', 'data-input')}<div class="draft"><b class="badge">承認済みの回答</b>
-    ${billing.answer.map(line => `<p class="answer-line">${line}</p>`).join('')}</div>
-    <div class="chips">${billing.evidence.map((label, i) => `<span class="chip"><b>K${[1,3,2][i]}</b>${label}</span>`).join('')}</div>${short ? '' : '<div class="approval"><span class="approve-status"></span><span class="stamp"></span></div>'}`)),
-  ...(short ? [scene('proof', caption(['根拠を見て、', '承認するだけ。'], 'blur'), app('担当者の確認履歴', `
-    <div class="question"><strong>${billing.question}</strong><small>回答</small></div>
-    <div class="draft"><b class="badge">顧客への表示前</b><p>追加日から月末まで日割り。</p></div>
-    <div class="chips">${billing.evidence.map((label, i) => `<span class="chip"><b>K${[1,3,2][i]}</b>${label}</span>`).join('')}</div>
-    <div class="approval"><span class="approve-status">承認を記録</span><span class="stamp">✓</span></div>`))] : []),
-  ...(short ? [] : [
-    scene('review', caption(['資料が食い違えば、', 'AIは答えず、人へ。']), app('受信箱', `
-      <div class="question"><strong>請求書払いはできますか？</strong><small>受信</small></div>
-      <div class="comparison"><div class="tile"><b>K4　料金ページ</b><p>対応済み</p></div>
-      <div class="tile"><b>K5　社内メモ</b><p>提供時期は未定</p></div></div>
-      <div class="handoff"><b class="badge warning">要確認 → 経理担当</b><p>要約　請求書払いの提供状況を確認</p></div>`)),
-    scene('phone', caption(['電話でも、同じ根拠で、', 'その場で答えます。']), app('ブラウザ上の模擬通話', `
-      <div class="question"><strong>${billing.question}</strong><small>通話</small></div>
-      <div class="wave" aria-hidden="true">${'<i></i>'.repeat(31)}</div>
-      <div class="draft"><b class="badge">承認済みの回答</b><p>日割り分を次回請求に加算。</p><small>K1 料金ページ · K3 FAQ · K2 利用規約</small></div>`))
+  scene('hook', 'cream', caption(['また、<mark>同じ</mark>', '料金の質問。']) +
+    (short ? '' : '<p class="thought">前の返信、どこだっけ。</p>'), inbox),
+  scene('reply', 'mint', caption(['送信する前に、', '<mark>答えが出てる。</mark>']),
+    card('ヘルプチャット', `<p class="input">${billing.question}</p>
+      <div class="answer"><strong>追加日から月末まで日割り。</strong><p>次回の請求に加算します。</p></div>
+      ${short ? '' : evidence + approval}`)),
+  ...(short ? [scene('proof', 'sky', caption(['根拠を見て、', '<mark>承認</mark>するだけ。']),
+    card('回答の根拠', `${evidence}<div class="approval">${arrow}${approval}</div>`))] : [
+    scene('review', 'sky', caption(['資料が食い違えば、', 'AIは答えず、<mark>人へ。</mark>']),
+      card('請求書払いはできますか？', `<div class="comparison">
+        <p>料金ページ<strong>対応済み</strong></p><span class="versus">≠</span>
+        <p>社内メモ<strong>時期未定</strong></p></div>
+        <div class="handoff">${arrow}<strong>経理担当へ引き継ぎ</strong></div>`)),
+    scene('phone', 'cream', caption(['電話でも、', '<mark>その場で</mark>回答。']), card('模擬通話', `
+      <div class="wave" aria-hidden="true">${'<i></i>'.repeat(15)}</div>
+      <div class="voice-answer"><strong>日割り分を次回請求に加算。</strong></div>`))
   ]),
-  scene('faq', caption(short ? ['よく来る質問は、', 'ページに追記。'] :
-    ['よく来る質問は、ページに追記して、', '根本から減らす。'], short ? 'blur' : 'long'), app('料金ページ', `
-    <div class="summary"><span>同じ料金質問 <small>架空データ</small></span><b><span class="count number">0</span> 件</b></div>
-    <div class="diff"><b class="badge diff-status">追記案</b><strong>＋ ユーザーを追加したときの料金</strong>
-    <p>参加時に課金。月末までの日割り分を次回請求に加算します。</p></div>`)),
-  scene('end', caption(['デモは、', 'プロフィールから。'], 'hero') +
-    '<p class="credits">声：VOICEVOX:No.7<br>デモ用の架空データ</p>',
-    `<div class="wordmark">${logo}<b>AnswerLoop</b></div><div class="loop-inbox">${app('受信箱', question('受信'))}</div>`)
+  scene('faq', 'mint', caption(['よく来る質問は、', 'ページに<mark>追記。</mark>']),
+    card('TaskNest ／ 料金ページ', `<div class="faq-count">同じ料金質問 <span class="tally"><b>14</b> 件${circle}</span></div>
+      <div class="diff"><span class="stamp diff-status"></span><strong>＋ ユーザー追加時の料金</strong>
+      <p>月末までの日割り分を次回請求に加算します。</p></div>`)),
+  scene('end', 'navy', caption(['デモは、', '<mark>プロフィール</mark>から。']) +
+    '<p class="credits">声：VOICEVOX:No.7</p>', `<div class="wordmark"><span>${logo}<b>AnswerLoop</b></span></div>
+      <div class="loop-inbox" hidden>${inbox}</div>`)
 ].join('');
 
 const timeline = [[0,'hook'], [timing.reply,'reply'],
@@ -126,29 +121,23 @@ const timeline = [[0,'hook'], [timing.reply,'reply'],
   [timing.faq,'faq'], [timing.end,'end']];
 const scenes = Object.fromEntries(timeline.map(([at, name]) => {
   const el = document.querySelector('.scene.' + name);
-  return [name, {
-    at, el, camera:el.querySelector('.camera'), glyphs:el.querySelectorAll('.glyph'),
-    underline:el.querySelector('.underline'), get:selector => el.querySelector(selector)
-  }];
+  return [name, {at, el, camera:el.querySelector('.camera'), get:selector => el.querySelector(selector)}];
 }));
 
-const count = age => [0, 4, 9, 14][Math.min(3, Math.floor(Math.max(0, age) * 10 + 1e-8))];
-const clip = (el, p) => { el.style.clipPath = `inset(0 ${100 * (1 - p)}% 0 0)`; };
-const mismatch = 14.10;
-function drawProof(active, t) {
-  active.el.querySelectorAll('.chip').forEach((chip, i) => {
-    const p = eased(t, timing.chips[i] - .2, .2);
-    pose(chip, p, `translateX(${45 * (1 - p)}px)`);
-  });
+function sticker(el, t, at) {
+  const p = phase(t, at, .2);
+  const scale = p < .65 ? .6 + .48 * eased(p, 0, .65) : 1.08 - .08 * smooth(p, .65, .35);
+  pose(el, clamp(p * 6), `scale(${scale}) rotate(${-4 * (1 - p)}deg)`);
 }
-function drawApproval(active, t) {
-  const approved = t >= timing.approve;
-  active.get('.approve-status').textContent = approved ? '事前に承認した回答' : '事前承認の履歴';
-  const stamp = active.get('.stamp');
-  const press = phase(t, timing.approve - .10, .10);
-  stamp.textContent = approved ? '✓' : '承認';
-  stamp.classList.toggle('is-done', approved);
-  stamp.style.transform = `scale(${approved ? 1 : 1 - .07 * press})`;
+function slide(el, t, at, distance = 156) {
+  const p = eased(t, at, .24);
+  pose(el, clamp(p * 3), `translateX(${distance * (1 - p)}px)`);
+}
+function drawInk(el, t, at) {
+  el.style.strokeDashoffset = 1 - smooth(t, at, .34);
+}
+function drawSources(active, t) {
+  active.el.querySelectorAll('.source').forEach((el, i) => sticker(el, t, timing.chips[i]));
 }
 
 function renderFrame(seconds) {
@@ -157,86 +146,75 @@ function renderFrame(seconds) {
   const active = scenes[name];
   for (const [key, scene] of Object.entries(scenes)) scene.el.hidden = key !== name;
   const age = t - active.at;
-  active.glyphs.forEach((glyph, i) => {
-    const p = eased(age, i * .033, .167);
-    glyph.style.opacity = p;
-    glyph.style.filter = `blur(${6 * (1 - p)}px)`;
-  });
-  active.underline.style.transform = `scaleX(${smooth(age, .13, .4)})`;
+  stage.dataset.color = active.el.dataset.color;
+  sticker(active.get('mark'), age, -.08);
+  slide(active.camera, age, name === 'hook' ? -.24 : -.06);
 
-  // A single rising navy sheet crosses the cut while the question stays registered.
-  const wipe = phase(t, timing.wipe, timing.reply - timing.wipe);
+  const wipe = smooth(t, timing.reply - .24, .24);
   const wipeEl = $('wipe');
   wipeEl.hidden = wipe === 0 || wipe === 1;
-  wipeEl.style.transform = `translateY(${(1 - smooth(wipe, 0, 1)) * 112}%)`;
+  wipeEl.style.transform = `translateX(${(1 - wipe) * 100}%)`;
 
   switch (name) {
     case 'hook': {
-      active.el.querySelectorAll('[data-mail]').forEach((card, i) => {
-        const p = i === 0 ? 1 : eased(t, .18 + (i - 1) * .29, .467);
-        const settle = smooth(t, short ? 1.84 : 3.47, .24);
-        const depth = (i === 0 ? 0 : i - 2) * (1 - settle);
-        pose(card, p, `translate(${depth * 12}px,${depth * -29 + (1 - p) * (i === 2 ? 80 : 30)}px)`);
-      });
       const tally = short ? 1.36 : 1.64;
-      pose(active.get('.mail-count'), eased(t, tally - .16, .16), `translateY(${100 * (1 - smooth(t, 1.9, .24))}px)`);
-      active.get('.count').textContent = count(t - tally);
+      sticker(active.get('.tally'), t, tally);
+      drawInk(active.get('path'), t, tally + .11);
       if (!short) pose(active.get('.thought'), eased(t, 2.1, .18));
       break;
     }
     case 'reply': {
-      const converting = t >= timing.reply + .15 && t < timing.reply + .40;
-      active.get('[data-input]').classList.toggle('converting', converting);
-      active.get('[data-input] small').textContent = converting ? '変換中' : '未送信';
-      const draft = active.get('.draft');
-      pose(draft, t < timing.answer ? 0 : 1);
-      active.el.querySelectorAll('.answer-line').forEach((line, i) => clip(line, eased(t, timing.answer + i * .05, .233)));
-      drawProof(active, t);
+      active.get('.input').hidden = t >= timing.answer;
+      active.get('.answer').hidden = t < timing.answer;
+      slide(active.get('.answer'), t, timing.answer);
       if (!short) {
-        const zoom = .15 * smooth(t, timing.proof, .5) + .035 * eased(t, timing.chips[0], .15);
-        pose(active.camera, 1, `scale(${1 + zoom * (1 - smooth(t, 9.50, .5))})`);
-        pose(active.get('.approval'), eased(t, 8.85, .16));
-        drawApproval(active, t);
+        active.get('.sources').hidden = t < timing.chips[0];
+        drawSources(active, t);
+        active.get('.stamp').hidden = t < timing.approve;
+        sticker(active.get('.stamp'), t, timing.approve);
       }
       break;
     }
-    case 'proof': {
-      drawProof(active, t);
-      drawApproval(active, t);
-      const zoom = .15 * smooth(t, timing.proof, .5) + .035 * eased(t, timing.chips[0], .15);
-      pose(active.camera, 1, `scale(${1 + zoom})`);
+    case 'proof':
+      drawSources(active, t);
+      drawInk(active.get('path'), t, timing.approve - .16);
+      sticker(active.get('.stamp'), t, timing.approve);
+      break;
+    case 'review': {
+      const handoff = t >= 14.60;
+      active.get('.comparison').hidden = handoff;
+      active.get('.handoff').hidden = !handoff;
+      sticker(active.get('.handoff strong'), t, 14.60);
+      drawInk(active.get('path'), t, 14.60);
       break;
     }
-    case 'review':
-      active.el.querySelectorAll('.tile').forEach((tile, i) => {
-        pose(tile, eased(age, .25 + i * .25, .22));
-        tile.classList.toggle('conflict', t >= mismatch);
-      });
-      clip(active.get('.handoff'), eased(t, 14.60, .24));
-      break;
     case 'phone': {
+      const speaking = t >= 17.3;
       const wave = active.get('.wave');
-      const bars = wave.querySelectorAll('i');
-      bars.forEach((bar, i) => {
-        bar.style.height = `${8 + 57 * Math.sin(i * .76) ** 2 * (1 - .6 * i / bars.length)}px`;
+      wave.hidden = speaking;
+      wave.querySelectorAll('i').forEach((bar, i) => {
+        bar.style.height = `${24 + 104 * Math.sin(i * .71 + age * 7) ** 2}px`;
       });
-      clip(wave, smooth(age, .12, .70));
-      clip(active.get('.draft'), eased(t, 17.3, .25));
+      active.get('.voice-answer').hidden = !speaking;
+      slide(active.get('.voice-answer'), t, 17.3);
       break;
     }
     case 'faq':
-      active.get('.count').textContent = count(age);
-      clip(active.get('.diff'), smooth(t, timing.diff, .45));
+      active.get('.faq-count').hidden = t >= timing.diff;
+      active.get('.diff').hidden = t < timing.diff;
+      sticker(active.get('.tally'), age, 0);
+      drawInk(active.get('path'), age, .04);
+      slide(active.get('.diff'), t, timing.diff);
       active.get('.diff-status').textContent = t >= timing.publish ? '反映済み' : '追記案';
-      if (short) pose(active.camera, 1, `scale(${1 + .185 * (1 - smooth(age, 0, .5))})`);
+      sticker(active.get('.diff-status'), t, t >= timing.publish ? timing.publish : timing.diff);
       break;
     case 'end': {
-      const wordmark = active.get('.wordmark');
-      const loop = smooth(t, duration - .5, .5);
-      const entry = eased(age, 0, .32);
-      pose(wordmark, entry * (1 - loop), `translateX(${24 * (1 - entry - loop)}px)`);
-      pose(active.get('.loop-inbox'), loop);
-      active.get('path').style.strokeDashoffset = 1 - smooth(age, 0, .72);
+      const loop = t >= duration - .5;
+      active.get('.wordmark').hidden = loop;
+      active.get('.loop-inbox').hidden = !loop;
+      sticker(active.get('.wordmark > span'), age, 0);
+      drawInk(active.get('.logo path'), age, .04);
+      slide(active.get('.loop-inbox'), t, duration - .5, -100);
       break;
     }
   }
@@ -250,12 +228,8 @@ const ready = Promise.all([prepareFonts(), loadNarration(duration, starts)]).the
 });
 
 async function prepareFonts() {
-  const fonts = [
-    '600 80px "Video Mincho", "Hiragino Mincho ProN", serif',
-    '600 52px "Video Sans", "Hiragino Sans", sans-serif',
-    '300 30px "Video Sans", "Hiragino Sans", sans-serif',
-    '600 48px "Inter", "Video Sans", "Hiragino Sans", sans-serif'
-  ];
+  const fonts = ['800 108px "Video Sans", "Hiragino Sans", sans-serif',
+    '600 44px "Video Sans", "Hiragino Sans", sans-serif'];
   await Promise.all(fonts.map(font => document.fonts.load(font)));
   await document.fonts.ready;
   for (const font of fonts) {

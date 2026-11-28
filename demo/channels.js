@@ -25,7 +25,7 @@ function buildAnswerIndex(records) {
   const approved = new Set(records.filter((item) => !item.conflict).map((item) => item.id));
   const answers = instantAnswers.filter((answer) => answer.refs.every((id) => approved.has(id)));
   for (const item of records) {
-    if (item.conflict || !item.matchSubject) continue;
+    if (item.conflict || item.indexPending || !item.matchSubject) continue;
     answers.push({
       aliases:[item.matchSubject, ...(item.resolvesInvoice ? invoiceAliases : [])],
       lines:item.quote.split(/\n+|(?<=。)/u).map((line) => line.trim()).filter(Boolean),
@@ -86,6 +86,12 @@ function sourceChips(refs) {
   }).join("");
 }
 
+function renderHelpArticle() {
+  const article = knowledge.findLast((item) => item.article);
+  return article ? `<div class="update-preview"><small>ヘルプセンター掲載（デモ）</small>
+    <h3>${escape(article.title)}</h3><p>${escape(article.article)}</p></div>` : "";
+}
+
 function renderChannels() {
   $("#main").innerHTML = heading("チャネル") + `
     <div class="segments channel-tabs" aria-label="チャネルの切り替え">
@@ -102,7 +108,8 @@ function renderChannels() {
           <div class="pricing"><span class="badge blue">TaskNest Proプラン</span><div><strong>1,200円</strong> / ユーザー・月</div>
             <p>タスク管理、メンバー招待、CSVインポート</p></div>
           <div class="help-links"><h3>よくある質問</h3>
-            <p>メンバーの招待と権限</p><p>タスクの一括インポート</p></div>
+            <p>メンバーの招待と権限</p><p>タスクの一括インポート</p>
+            <div id="help-article">${renderHelpArticle()}</div></div>
         </div>
         <section class="widget card" aria-label="TaskNest サポートチャット">
           <header class="widget-head"><div><h2>TaskNest サポート</h2><p>入力中に、AIが承認済みの回答を検索</p></div>

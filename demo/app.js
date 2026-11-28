@@ -48,7 +48,12 @@ const icons = {
 
 const icon = (name, size = 17, label = "") => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" ${label ? 'role="img" aria-label="' + label + '"' : 'aria-hidden="true"'}>${label ? '<title>' + label + '</title>' : ''}${icons[name]}</svg>`;
 const navigation = [["inbox","受信箱"],["review","要確認"],["channels","チャネル"],["insights","インサイト"],["knowledge","ナレッジ"]];
-const guide = ["チャットで即答", "電話（模擬）", "要確認を人へ", "追記候補を承認"];
+const guide = ["チャットで即答", "電話（模擬）", "要確認を人へ", "追記候補を承認", "人の回答→ナレッジ自動更新"];
+const invoiceReply = "請求書払いは現在準備中です。提供開始が決まり次第ご案内します。";
+const invoiceApprover = "経理／プロダクト担当";
+const invoiceArticleTitle = "請求書払いは利用できますか？";
+const invoiceArticle = "現在、請求書払いはご利用いただけません。提供に向けて準備を進めており、開始時期が決まり次第、ヘルプセンターでお知らせします。";
+const canSendInvoice = (ticket) => ticket?.conflict && !ticket.pending && !ticket.added && ticket.status === "review";
 const draftPricing = "お問い合わせありがとうございます。ユーザーを追加した場合、招待したユーザーが参加した時点で課金対象となり[K3]、追加日から月末までの日割り料金を次回のご請求に加算いたします[K1][K2]。";
 const draftImport = "お問い合わせありがとうございます。タスクはCSV（UTF-8）で最大5,000件まで一括取り込み可能です[K6]。";
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
@@ -56,7 +61,7 @@ const params = new URLSearchParams(location.search);
 const intro = Number(params.get("step"));
 const embedded = params.get("embed") === "1";
 let tickets, knowledge, page, selected, step, completed, generation, ticketId;
-let inboxFilter, proposalApproved;
+let inboxFilter, proposalApproved, knowledgeHistory;
 let displayed = [86, 100, 7.6];
 let metricFrame, toastTimer, audio;
 const renderedRows = new WeakMap();
@@ -113,7 +118,7 @@ function parseCSV(raw) {
 function classify(subject, body) {
   const text = subject + "\n" + body;
   if (isInvoiceQuestion(text.replace(/\s/g, ""))) {
-    const confirmed = knowledge.findLast((item) => item.resolvesInvoice);
+    const confirmed = knowledge.findLast((item) => item.resolvesInvoice && !item.indexPending);
     return confirmed
       ? { category:"お金回り", status:"draft", response:`${confirmed.quote}[${confirmed.id}]`, refs:[confirmed.id] }
       : { category:"お金回り", status:"review", refs:["K4","K5"], conflict:true };
@@ -224,7 +229,8 @@ function segments(labels, current, type) {
 }
 
 function visibleTickets() {
-  return tickets.filter((ticket) => ticket.visible && (page === "review" ? !ticket.pending && ticket.status === "review"
+  return tickets.filter((ticket) => ticket.visible && (page === "review" ? !ticket.pending &&
+    (ticket.status === "review" || (ticket.id === selected && ticket.knowledgeUpdate))
     : inboxFilter === "all" || (!ticket.pending && ticket.status === inboxFilter)));
 }
 
@@ -276,9 +282,13 @@ function renderDetail() {
     detail.innerHTML = '<div class="panel muted">問い合わせを選択してください。</div>';
     return;
   }
-  detail.innerHTML = `<div class="card-title"><div><small>${escape(ticket.sender)}</small><h2>${escape(ticket.subject)}</h2></div>${ticket.status === "sent" ? badge("送信済み","green") : ticket.status === "ai" ? badge("AI解決","green") : ""}</div>
+  detail.innerHTML = `<div class="card-title"><div><small>${escape(ticket.sender)}</small><h2>${escape(ticket.subject)}</h2></div>${ticket.knowledgeUpdate ? badge("送信済み（デモ）","green") : ticket.status === "sent" ? badge("送信済み","green") : ticket.status === "ai" ? badge("AI解決","green") : ""}</div>
+    <div class="${ticket.knowledgeUpdate ? "update-layout" : ""}">
     <div class="detail"><div><h3>問い合わせ本文</h3><p class="message">${escape(ticket.body)}</p></div>
-    ${ticket.pending ? '<div class="draft searching" role="status">根拠を検索中</div>' : ticket.status === "review" ? reviewContent(ticket) : draftContent(ticket)}</div>`;
+    ${ticket.knowledgeUpdate ? `<div class="draft"><h3>担当者が送信した回答</h3><p>${invoiceReply}</p></div>`
+      : ticket.pending ? '<div class="draft searching" role="status">根拠を検索中</div>' : ticket.status === "review" ? reviewContent(ticket) : draftContent(ticket)}</div>
+    ${ticket.knowledgeUpdate ? '<section class="update-panel" aria-label="ナレッジ自動更新"><h2>ナレッジ自動更新</h2><small>デモ用の架空データ</small><p class="visually-hidden" role="status"></p><ol class="update-timeline"></ol><div class="update-result"></div></section>' : ""}</div>`;
+  if (ticket.knowledgeUpdate) renderKnowledgeUpdate(ticket.knowledgeUpdate);
 }
 
 function draftContent(ticket) {
@@ -316,7 +326,87 @@ function reviewContent(ticket) {
     </dl></div>
     ${ticket.added ? '<p class="badge green">次回からチャットと電話でも即答できます</p>' : ""}
     ${ticket.confirming ? editor : `<div class="actions">${ticket.assigned ? badge(`${ticket.conflict ? "経理 / " : ""}プロダクト担当に割り当て済み`,"green") : button("assign","担当者に割り当て",true)}
-    ${ticket.added ? button("knowledge","ナレッジを見る") + button("try-answer","チャットで同じ質問を試す") : button("add","確定した回答をナレッジに追加")}</div>`}`;
+    ${ticket.added ? button("knowledge","ナレッジを見る") + button("try-answer","チャットで同じ質問を試す") : button("add","確定した回答をナレッジに追加")}</div>`}
+    ${canSendInvoice(ticket) && !ticket.confirming ? `<div class="draft"><h3>担当者の回答（デモ）</h3><p>${invoiceReply}</p>
+    <div class="actions">${button("send-invoice","回答して送信",true)}</div></div>` : ""}`;
+}
+
+function renderKnowledgeUpdate(update) {
+  const stages = [
+    ["問い合わせを取り込み、候補に追加", "新しい有人対応の問い合わせを検出しました。"],
+    ["社内ルールで掲載を判定", `同種の問い合わせが${update.related}件。料金・契約に関わり、個別事情に依存しないため掲載対象です。`],
+    ["資料を調査・整理", "料金ページは「対応」、社内仕様メモと過去の返信は「準備中」。利用規約には提供時期の記載がなく、担当者に確認します。"],
+    ["担当者に確認を依頼", `確認先：${invoiceApprover} → 確定済み`],
+    ["回答例と記事を作成・掲載", "承認済みナレッジに記録しました。"],
+    ["チャット・電話の索引を更新しました", "次回は承認済みの回答を即答できます。"]
+  ];
+  const preview = `<div class="update-preview"><h3>回答例</h3><p>${invoiceReply}</p>
+    <h3>ヘルプセンター掲載（デモ）</h3><strong>${invoiceArticleTitle}</strong><p>${invoiceArticle}</p></div>`;
+  $(".update-timeline").innerHTML = stages.map(([label, description], index) => {
+    const done = index < update.progress;
+    const active = index === update.progress;
+    return `<li class="${done ? "checked" : ""}" ${active ? 'aria-current="step"' : ""}><span class="update-mark" aria-hidden="true">${done ? "✓" : index + 1}</span>
+      <div><strong>${index === 5 && !done ? "チャット・電話の索引を更新" : label}</strong>${done ? `<p>${description}</p>${index === 4 ? preview : ""}` : ""}</div></li>`;
+  }).join("");
+  $(".update-panel [role=status]").textContent = update.progress ? stages[update.progress - 1][0] : "ナレッジ自動更新を開始しました";
+  if (update.progress === stages.length) {
+    $(".update-result").innerHTML = `<div class="actions">${button("try-invoice","チャットで同じ質問を試す",true)}${button("knowledge","更新履歴を見る")}</div>`;
+  }
+}
+
+async function sendInvoice(ticket, autoChat = false) {
+  if (!canSendInvoice(ticket) || ticket.confirming) return;
+  // The demo includes one earlier case about the same payment method.
+  const related = 1 + tickets.filter((item) => item.visible && !item.pending && item.conflict).length;
+  const update = ticket.knowledgeUpdate = {progress:0, related, autoChat};
+  const current = generation;
+  ticket.status = "sent";
+  ticket.response = invoiceReply;
+  play("send");
+  renderNav();
+  renderList();
+  renderDetail();
+  if (!embedded && matchMedia("(max-width: 930px)").matches) {
+    $(".update-panel").scrollIntoView({behavior:reduced.matches ? "auto" : "smooth", block:"nearest"});
+  }
+  updateMetrics();
+  for (let stage = 1; stage <= 6; stage++) {
+    await waitFor(500);
+    if (current !== generation) return;
+    update.progress = stage;
+    if (stage === 5) {
+      const now = new Date();
+      update.record = {
+        id:`K${knowledge.length + 1}`,
+        title:invoiceArticleTitle, type:"担当者の確定回答", quote:invoiceReply,
+        date:now.toLocaleDateString("sv-SE"), conflict:false, resolvesInvoice:true,
+        matchSubject:chatSamples[2], article:invoiceArticle, indexPending:true
+      };
+      knowledge.push(update.record);
+      knowledgeHistory.unshift({time:now, subject:ticket.subject, approver:invoiceApprover});
+      if (page === "knowledge") renderKnowledge();
+      const helpArticle = $("#help-article");
+      if (helpArticle) helpArticle.innerHTML = renderHelpArticle();
+    }
+    if (stage === 6) {
+      update.record.indexPending = false;
+      answerIndex = buildAnswerIndex(knowledge);
+      completed.add(5);
+      renderGuide();
+      if (page === "channels" && channel === "chat" && chat.text && !chat.composing) searchChat();
+    }
+    play("land");
+    if (selected === ticket.id && $(".update-timeline")) renderKnowledgeUpdate(update);
+  }
+  if (update.autoChat) {
+    await waitFor(750);
+    if (current === generation && step === 5 && page === "review" && selected === ticket.id) tryInvoice();
+  }
+}
+
+function tryInvoice() {
+  chooseChannel("chat");
+  typeQuestion(chatSamples[2]);
 }
 
 const monthlyDemoCounts = {
@@ -357,7 +447,13 @@ function renderInsights() {
 }
 
 function renderKnowledge() {
-  $("#main").innerHTML = heading("ナレッジ","FAQ改善ループ") + `<div class="knowledge">${knowledge.map((item) => `
+  const history = knowledgeHistory.length ? `<ul>${knowledgeHistory.map(({time, subject, approver}) => `
+    <li><time datetime="${time.toISOString()}">${time.toLocaleString("ja-JP")}</time>
+    <strong>${escape(subject)}</strong><span>確定担当：${approver}</span></li>`).join("")}</ul>`
+    : '<p class="muted">更新履歴はまだありません。</p>';
+  $("#main").innerHTML = heading("ナレッジ","FAQ改善ループ") + `
+    <section class="card panel update-history"><div><h2>更新履歴</h2><small>デモ用の架空データ</small></div>${history}</section>
+    <div class="knowledge">${knowledge.map((item) => `
     <article class="card"><div class="draft-head"><h3>${item.id} · ${escape(item.title)}</h3>${item.conflict ? badge("要確認","orange") : badge("確定","green")}</div>
     <small>出典の種類 ${escape(item.type)}　最終確認日 ${item.date}</small><p>${escape(item.quote)}</p></article>`).join("")}</div>`;
 }
@@ -391,8 +487,31 @@ function goStep(next) {
     changePage("review");
     if (selected) completed.add(3);
     renderGuide();
-  } else {
+  } else if (next === 4) {
     changePage("insights");
+  } else {
+    const invoice = tickets.find((ticket) => ticket.knowledgeUpdate)
+      ?? tickets.find((ticket) => ticket.id === selected && canSendInvoice(ticket))
+      ?? tickets.find((ticket) => ticket.sample && canSendInvoice(ticket))
+      ?? tickets.find(canSendInvoice);
+    selected = invoice?.id ?? null;
+    changePage("review");
+  }
+}
+
+function runStepFive() {
+  let ticket = tickets.find((item) => item.id === selected);
+  if (page !== "review" || (!ticket?.knowledgeUpdate && !canSendInvoice(ticket))) {
+    goStep(5);
+    ticket = tickets.find((item) => item.id === selected);
+  }
+  if (ticket?.knowledgeUpdate?.progress === 6 || (!ticket?.knowledgeUpdate && !canSendInvoice(ticket) && lookupAnswer(chatSamples[2], answerIndex).lines)) {
+    tryInvoice();
+  } else if (ticket?.knowledgeUpdate) {
+    ticket.knowledgeUpdate.autoChat = true;
+  } else if (canSendInvoice(ticket)) {
+    ticket.confirming = false;
+    sendInvoice(ticket, true);
   }
 }
 
@@ -401,6 +520,7 @@ function reset() {
   ticketId = 0;
   tickets = [];
   knowledge = originals.map((item) => ({...item}));
+  knowledgeHistory = [];
   resetChannels();
   inboxFilter = "all";
   proposalApproved = false;
@@ -514,6 +634,7 @@ function action(name) {
     return;
   }
   if (name === "knowledge") { changePage("knowledge"); return; }
+  if (name === "try-invoice") { tryInvoice(); return; }
   const ticket = tickets.find((item) => item.id === selected);
   if (!ticket) return;
   switch (name) {
@@ -522,6 +643,7 @@ function action(name) {
       typeQuestion(ticket.subject);
       return;
     case "send": approve(ticket); return;
+    case "send-invoice": sendInvoice(ticket); return;
     case "edit": ticket.editing = true; break;
     case "cancel-edit": ticket.editing = false; break;
     case "save": {
@@ -591,7 +713,7 @@ document.addEventListener("click", (event) => {
   if (micStart) listen();
   if (ticket) {
     selected = Number(ticket);
-    if (tickets.find((item) => item.id === selected)?.conflict && page === "review") completed.add(3);
+    if (tickets.find((item) => item.id === selected && item.status === "review")?.conflict && page === "review") completed.add(3);
     renderList();
     renderDetail();
     renderGuide();
@@ -632,10 +754,11 @@ $("#csv").addEventListener("change", async (event) => {
 document.addEventListener("keydown",(event) => {
   if (event.defaultPrevented || event.altKey || event.metaKey || event.ctrlKey ||
       event.target.closest("textarea,input,[contenteditable]") || event.repeat) return;
-  if (event.key === "ArrowRight" && step < 4) {
+  if (event.key === "ArrowRight" && (step < guide.length || (step === 5 && page !== "channels"))) {
     event.preventDefault();
     play();
-    goStep(step + 1);
+    if (step < guide.length) goStep(step + 1);
+    if (step === 5) runStepFive();
   }
   if (event.key.toLowerCase() === "r") {
     event.preventDefault();
@@ -657,4 +780,4 @@ if (embedded) {
 }
 
 reset();
-if ([1,2,3,4].includes(intro)) goStep(intro);
+if (Number.isInteger(intro) && intro >= 1 && intro <= guide.length) goStep(intro);

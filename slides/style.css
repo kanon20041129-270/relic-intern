@@ -101,11 +101,8 @@ h1 { font-size: 96px; font-weight: 900; letter-spacing: -.05em; line-height: 1.1
 .recovery { border-top: 2px solid var(--line); padding-top: 22px; }
 .sns .label { margin-bottom: 30px; }
 .sns h1 { font-size: 90px; }
-.sns-points { width: 1060px; margin-top: 24px; }
-.sns-points div { border-top: 2px solid var(--line); padding: 10px 0; }
-.sns-points dt { color: var(--accent); font-size: 40px; font-weight: 800; }
-.sns-points dd { font-size: 44px; font-weight: 750; margin-top: 5px; }
-.sns-cta { margin-top: 12px; }
+.sns-points { width: 1060px; margin-top: 24px; padding: 0; list-style: none; }
+.sns-points li { border-top: 2px solid var(--line); padding: 18px 0; font-size: 44px; font-weight: 750; }
 .phone { position: absolute; right: 152px; top: 81px; height: 918px; width: calc(892px * 9 / 16 + 26px); border: 13px solid var(--navy); border-radius: 54px; }
 .phone::after { content: ""; position: absolute; pointer-events: none; top: 0; left: 50%; translate: -50% 0; width: 154px; height: 21px; border-radius: 0 0 16px 16px; background: var(--navy); }
 .feedback h1 { font-size: 91px; }

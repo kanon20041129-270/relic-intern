@@ -106,6 +106,28 @@ details ol { padding-left:22px; }
 .knowledge { display:grid; gap:8px; }
 .knowledge article { padding:12px 16px; }
 .knowledge p { margin-top:4px; overflow-wrap:anywhere; }
+.update-layout { display:grid; grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr); }
+.update-panel { min-width:0; padding:14px 16px; border-left:1px solid var(--line); background:#fafbfc; }
+.update-timeline { display:grid; gap:8px; list-style:none; padding:0; margin:12px 0; }
+.update-timeline li { display:grid; grid-template-columns:24px minmax(0,1fr); align-items:start; gap:8px; color:var(--muted); }
+.update-timeline li.checked { color:var(--ink); }
+.update-timeline li[aria-current="step"] { color:var(--blue-text); }
+.update-mark { display:grid; place-items:center; width:24px; height:24px; border-radius:50%; background:var(--bg); font-weight:800; }
+.checked .update-mark { color:var(--green-text); background:var(--ok-soft); }
+[aria-current="step"] > .update-mark { background:var(--accent-soft); }
+.update-timeline p { margin-top:2px; }
+.update-preview { margin-top:6px; padding:8px 10px; border:1px solid var(--line); border-radius:9px; background:#fff; }
+.update-preview p + h3 { margin-top:6px; }
+.update-preview h3 { word-break:normal; }
+#help-article:empty { display:none; }
+.update-history { margin-bottom:12px; }
+.update-history ul { display:grid; gap:6px; padding:0; margin:0; list-style:none; }
+.update-history li { display:flex; flex-wrap:wrap; gap:4px 14px; }
+.visually-hidden { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+@media(max-width:1200px) {
+  :where(html:not(.embedded)) .update-layout { grid-template-columns:1fr; }
+  :where(html:not(.embedded)) .update-panel { border-left:0; border-top:1px solid var(--line); }
+}
 .guide { position:fixed; z-index:2; bottom:14px; right:18px; padding:9px 12px; background:#fff; border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); }
 .guide-head,#steps { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .guide-head { margin-bottom:5px; }
