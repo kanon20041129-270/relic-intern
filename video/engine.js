@@ -5,51 +5,56 @@ const params = new URLSearchParams(location.search);
 const vertical = params.get('format') === 'vertical';
 const embed = params.get('embed') === '1';
 const frame = params.has('t');
-const duration = 30;
 const width = vertical ? 1080 : 1920;
 const height = vertical ? 1920 : 1080;
 const clamp = (n, low = 0, high = 1) => Math.max(low, Math.min(high, n));
-const lerp = (a, b, p) => a + (b - a) * p;
 const phase = (t, at, span) => clamp((t - at) / span);
 const cubic = (a, b, c, d, t) => {
   const i = 1 - t;
   return i * i * i * a + 3 * i * i * t * b + 3 * i * t * t * c + t * t * t * d;
 };
-function enter(p) {
+function bezier(p, x1, y1, x2, y2) {
   if (p <= 0 || p >= 1) return p;
   let low = 0;
   let high = 1;
   for (let i = 0; i < 13; i++) {
     const mid = (low + high) / 2;
-    if (cubic(0, .05, .1, 1, mid) < p) low = mid;
+    if (cubic(0, x1, x2, 1, mid) < p) low = mid;
     else high = mid;
   }
-  return cubic(0, .7, 1, 1, (low + high) / 2);
+  return cubic(0, y1, y2, 1, (low + high) / 2);
 }
-const eased = (t, at, span) => enter(phase(t, at, span));
-const accelerate = p => p * p * p;
+const eased = (t, at, span) => bezier(phase(t, at, span), .05, .7, .1, 1);
 function pose(el, opacity, transform = '') {
   el.style.opacity = opacity;
   el.style.transform = transform;
 }
-function rise(el, amount, opacity = amount, distance = 35) {
-  pose(el, opacity, `translateY(${(1 - amount) * distance}px)`);
-}
 
-document.body.classList.toggle('vertical', vertical);
-document.body.classList.toggle('embed', embed);
-document.body.classList.toggle('safe', params.get('safe') === '1');
-const viewport = $('viewport');
+const duration = params.get('cut') === '15' ? 15 : 30;
+const short = duration === 15;
+const exporting = params.get('export') === '1';
 const stage = $('stage');
-const overlay = $('overlay');
+const viewport = $('viewport');
 const poster = $('poster');
+const overlay = $('overlay');
 const playCircle = overlay.querySelector('.play-circle');
 const playIcon = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="m10 6 17 10-17 10Z" fill="currentColor"/></svg>';
-const replayIcon = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 14a10 10 0 1 1 2 9M6 6v8h8" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-const formatParams = new URLSearchParams(params);
-formatParams.set('format', vertical ? 'horizontal' : 'vertical');
-$('switch').href = '?' + formatParams;
-$('switch').textContent = vertical ? '横版' : '縦版';
+const replayIcon = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 14a10 10 0 1 1 2 9M6 6v8h8" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>';
+document.body.classList.toggle('vertical', vertical);
+document.body.classList.toggle('embed', embed);
+document.body.classList.toggle('frame', frame);
+document.body.classList.toggle('export', exporting);
+document.body.classList.toggle('safe', params.get('safe') === '1');
+
+function switchLink(id, name, value, label) {
+  const query = new URLSearchParams(params);
+  query.set(name, value);
+  $(id).href = '?' + query;
+  $(id).textContent = label;
+}
+switchLink('switch', 'format', vertical ? 'horizontal' : 'vertical', vertical ? '横版' : '縦版');
+switchLink('cut', 'cut', short ? '30' : '15', short ? '30秒版' : '15秒版');
+$('seek').max = duration;
 
 function fit() {
   const scale = Math.min(viewport.clientWidth / width, viewport.clientHeight / height);
@@ -58,170 +63,221 @@ function fit() {
 new ResizeObserver(fit).observe(viewport);
 fit();
 
-const brand = `<svg viewBox="0 0 100 100" aria-hidden="true">
-  <rect width="100" height="100" rx="22" fill="#2E5BFF"/>
-  <g fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
-    <path class="logo-line" pathLength="1" d="M73 36a27 27 0 1 0 2 26m-1-38v13H61"/>
-    <path class="logo-line" pathLength="1" d="M41 39h18a7 7 0 0 1 7 7v7a7 7 0 0 1-7 7H48l-8 6v-6a7 7 0 0 1-6-7v-7a7 7 0 0 1 7-7Z"/>
-  </g></svg><span>AnswerLoop</span>`;
-const brands = [...document.querySelectorAll('.brand')];
-brands.forEach(el => { el.innerHTML = brand; });
-const logoLines = brands.map(el => [...el.querySelectorAll('.logo-line')]);
-logoLines.flat().forEach(line => { line.style.strokeDasharray = '1 1'; });
-function drawLogo(index, t, at) {
-  logoLines[index].forEach((line, i) => {
-    line.style.strokeDashoffset = 1 - eased(t, at + i * .15, .68);
+const smooth = (t, at, span) => bezier(phase(t, at, span), .2, 0, 0, 1);
+const billing = {
+  question: '追加料金はいつ発生しますか？',
+  answer: ['参加した時点で課金対象。', '追加日から月末まで日割り。', '次回の請求に加算します。'],
+  evidence: ['料金ページ', 'FAQ', '利用規約']
+};
+const starts = short ? [.25, 3, 6.1, 9.4, 12.3] : [.25, 4.9, 10.8, 15.9, 20.6, 27];
+const timing = short
+  ? {wipe:2.4, reply:2.9, answer:3.8, proof:6, chips:[6.43, 6.76, 7.10], approve:7.70, faq:9.2, diff:9.8, publish:11.83, end:12}
+  : {wipe:4.5, reply:4.95, answer:5.9, proof:6.7, chips:[7.2, 7.55, 7.9], approve:9.15, review:10, phone:15.5, faq:20, diff:20.5, publish:24.55, end:26.5};
+const rests = short ? [] : [[14.10, 14.60]];
+const app = (label, body) => `<article class="app"><header class="chrome"><b>TaskNest</b><span>${label}</span></header><div class="content">${body}</div></article>`;
+const question = (label, attrs = '') => `<div class="question" ${attrs}><strong>${billing.question}</strong><small>${label}</small></div>`;
+const caption = (lines, mode = 'long') => `<h1 class="${mode}">${lines.map(line =>
+  `<span class="line">${mode === 'blur' ? [...line].map(char => `<span class="glyph">${char}</span>`).join('') : line}</span>`).join('')}</h1><i class="underline"></i>`;
+const scene = (name, copy, body) => `<section class="scene ${name}" hidden><div class="copy">${copy}</div><div class="camera">${body}</div></section>`;
+const inbox = `<div class="mail-stack">
+  ${question('受信', 'data-mail="0"')}${question('受信', 'data-mail="1"')}${question('受信', 'data-mail="2"')}
+  <div class="question mail-count"><span>同じ料金質問</span><b><span class="count number">0</span> 件</b></div>
+</div>`;
+const logo = `<svg viewBox="0 0 100 100" aria-hidden="true"><path pathLength="1"
+  d="M79 34a33 33 0 1 0 2 29 M80 19v16H64 M39 39h22a7 7 0 0 1 7 7v10a7 7 0 0 1-7 7H48l-11 8v-9a7 7 0 0 1-5-7v-9a7 7 0 0 1 7-7Z"/></svg>`;
+
+$('identity').textContent = 'AnswerLoop';
+$('scenes').innerHTML = [
+  scene('hook', caption(['また、同じ料金の質問。'], 'hero') +
+    (short ? '' : '<p class="thought">前の返信、どこだっけ。</p>'), app('受信箱', inbox)),
+  scene('reply', caption(short ? ['送信する前に、', 'もう答えが出てる。'] :
+    ['アンサーループなら、送信する前に、', '根拠つきで答えが出ます。']), app('ヘルプチャット', `
+    ${question('未送信', 'data-input')}<div class="draft"><b class="badge">承認済みの回答</b>
+    ${billing.answer.map(line => `<p class="answer-line">${line}</p>`).join('')}</div>
+    <div class="chips">${billing.evidence.map((label, i) => `<span class="chip"><b>K${[1,3,2][i]}</b>${label}</span>`).join('')}</div>${short ? '' : '<div class="approval"><span class="approve-status"></span><span class="stamp"></span></div>'}`)),
+  ...(short ? [scene('proof', caption(['根拠を見て、', '承認するだけ。'], 'blur'), app('担当者の確認履歴', `
+    <div class="question"><strong>${billing.question}</strong><small>回答</small></div>
+    <div class="draft"><b class="badge">顧客への表示前</b><p>追加日から月末まで日割り。</p></div>
+    <div class="chips">${billing.evidence.map((label, i) => `<span class="chip"><b>K${[1,3,2][i]}</b>${label}</span>`).join('')}</div>
+    <div class="approval"><span class="approve-status">承認を記録</span><span class="stamp">✓</span></div>`))] : []),
+  ...(short ? [] : [
+    scene('review', caption(['資料が食い違えば、', 'AIは答えず、人へ。']), app('受信箱', `
+      <div class="question"><strong>請求書払いはできますか？</strong><small>受信</small></div>
+      <div class="comparison"><div class="tile"><b>K4　料金ページ</b><p>対応済み</p></div>
+      <div class="tile"><b>K5　社内メモ</b><p>提供時期は未定</p></div></div>
+      <div class="handoff"><b class="badge warning">要確認 → 経理担当</b><p>要約　請求書払いの提供状況を確認</p></div>`)),
+    scene('phone', caption(['電話でも、同じ根拠で、', 'その場で答えます。']), app('ブラウザ上の模擬通話', `
+      <div class="question"><strong>${billing.question}</strong><small>通話</small></div>
+      <div class="wave" aria-hidden="true">${'<i></i>'.repeat(31)}</div>
+      <div class="draft"><b class="badge">承認済みの回答</b><p>日割り分を次回請求に加算。</p><small>K1 料金ページ · K3 FAQ · K2 利用規約</small></div>`))
+  ]),
+  scene('faq', caption(short ? ['よく来る質問は、', 'ページに追記。'] :
+    ['よく来る質問は、ページに追記して、', '根本から減らす。'], short ? 'blur' : 'long'), app('料金ページ', `
+    <div class="summary"><span>同じ料金質問 <small>架空データ</small></span><b><span class="count number">0</span> 件</b></div>
+    <div class="diff"><b class="badge diff-status">追記案</b><strong>＋ ユーザーを追加したときの料金</strong>
+    <p>参加時に課金。月末までの日割り分を次回請求に加算します。</p></div>`)),
+  scene('end', caption(['デモは、', 'プロフィールから。'], 'hero') +
+    '<p class="credits">声：VOICEVOX:No.7<br>デモ用の架空データ</p>',
+    `<div class="wordmark">${logo}<b>AnswerLoop</b></div><div class="loop-inbox">${app('受信箱', question('受信'))}</div>`)
+].join('');
+
+const timeline = [[0,'hook'], [timing.reply,'reply'],
+  ...(short ? [[timing.proof,'proof']] : [[timing.review,'review'], [timing.phone,'phone']]),
+  [timing.faq,'faq'], [timing.end,'end']];
+const scenes = Object.fromEntries(timeline.map(([at, name]) => {
+  const el = document.querySelector('.scene.' + name);
+  return [name, {
+    at, el, camera:el.querySelector('.camera'), glyphs:el.querySelectorAll('.glyph'),
+    underline:el.querySelector('.underline'), get:selector => el.querySelector(selector)
+  }];
+}));
+
+const count = age => [0, 4, 9, 14][Math.min(3, Math.floor(Math.max(0, age) * 10 + 1e-8))];
+const clip = (el, p) => { el.style.clipPath = `inset(0 ${100 * (1 - p)}% 0 0)`; };
+const mismatch = 14.10;
+function drawProof(active, t) {
+  active.el.querySelectorAll('.chip').forEach((chip, i) => {
+    const p = eased(t, timing.chips[i] - .2, .2);
+    pose(chip, p, `translateX(${45 * (1 - p)}px)`);
   });
-  rise(brands[index].lastElementChild, eased(t, at + .16, .48));
+}
+function drawApproval(active, t) {
+  const approved = t >= timing.approve;
+  active.get('.approve-status').textContent = approved ? '事前に承認した回答' : '事前承認の履歴';
+  const stamp = active.get('.stamp');
+  const press = phase(t, timing.approve - .10, .10);
+  stamp.textContent = approved ? '✓' : '承認';
+  stamp.classList.toggle('is-done', approved);
+  stamp.style.transform = `scale(${approved ? 1 : 1 - .07 * press})`;
 }
 
-const notices = [
-  '追加料金はいつ？', '請求書払いできますか', 'ユーザー追加の料金は',
-  '日割り計算になりますか', '招待したらすぐ課金？', '請求書はいつ届きますか',
-  '日割りの期間を教えてください', 'ユーザーを増やしたい', '請求の締め日は？',
-  '追加分はいつ請求されますか', '請求書払いに切り替えたい', '今月の追加料金は？',
-  '料金ページを確認しました', '追加ユーザーの請求について'
-];
-const noticeAt = [.12, .37, .61, .84, 1.06, 1.28, 1.49, 1.69, 1.88, 2.06, 2.22, 2.36, 2.49, 2.61];
-const noticePositions = vertical
-  ? [[27,395],[610,520],[195,270],[498,915],[-108,841],[660,315],[70,1070],[529,1130],[-93,575],[690,785],[91,1342],[579,1429],[10,153],[491,112]]
-  : [[138,258],[1386,562],[1197,174],[305,766],[39,556],[1522,313],[1025,815],[20,108],[619,119],[1492,778],[-58,752],[757,927],[1444,51],[287,405]];
-const noticeEls = notices.map((title, i) => {
-  const el = document.createElement('div');
-  el.className = 'notice';
-  el.innerHTML = '<small>新着問い合わせ</small><b></b>';
-  el.lastElementChild.textContent = title;
-  el.style.left = noticePositions[i][0] + 'px';
-  el.style.top = noticePositions[i][1] + 'px';
-  $('notifications').append(el);
-  return el;
-});
-
-const answer = 'お問い合わせありがとうございます。ユーザーを追加した場合、招待したユーザーが参加した時点で課金対象となり[K3]、追加日から月末までの日割り料金を次回のご請求に加算いたします[K1][K2]。';
-const letters = [...answer].map(char => {
-  const letter = document.createElement('span');
-  letter.textContent = char;
-  return letter;
-});
-$('draft-text').append(...letters);
-let lastLetter = -1;
-const bars = [['ユーザー追加時の料金',14],['請求書払い',9],['CSVインポート',6],['ログインできない',4],['領収書の発行',3]].map(([label, value]) => {
-  const el = document.createElement('div');
-  el.className = 'bar-row';
-  el.innerHTML = '<span></span><div class="track"><i class="fill"></i></div><strong></strong>';
-  el.firstElementChild.textContent = label;
-  el.lastElementChild.textContent = value + '件';
-  $('bars').append(el);
-  return { el, fill:el.querySelector('.fill'), value };
-});
-
-const scenes = [
-  ['hook',0,3], ['problem',3,6.5], ['intro',6.5,8.5], ['reply',8.5,15],
-  ['review',15,19.5], ['insight',19.5,25], ['ending',25,30]
-].map(([id, start, end]) => ({ el:$(id), start, end }));
-const cameraEls = [...document.querySelectorAll('.camera')];
-const featureCopies = [...document.querySelectorAll('.feature-copy')];
-const marks = [...document.querySelectorAll('mark')];
-const conflicts = [...document.querySelectorAll('.conflicts > div')];
-const warning = document.querySelector('.warning');
-const handoff = document.querySelector('.handoff');
-const diff = document.querySelector('.diff');
-const metric = document.querySelector('.metric');
-const approve = $('approve');
-const sent = $('sent');
-const pointerAt = 11.72;
-const clickAt = 12.85;
-const countStart = 22;
-const countEnd = 24;
-const countSteps = 11;
-const countTimes = Array.from({length:countSteps}, (_, i) => lerp(countStart, countEnd, (i + 1) / countSteps));
-
-function render(seconds) {
+function renderFrame(seconds) {
   const t = clamp(Number(seconds) || 0, 0, duration);
-  for (const { el, start, end } of scenes) {
-    const opacity = (start === 0 ? 1 : eased(t, start, .45)) *
-      (end === duration ? 1 : 1 - accelerate(phase(t, end - .10, .40)));
-    el.style.visibility = opacity > 0 ? 'visible' : 'hidden';
-    el.style.opacity = opacity;
+  const name = timeline.findLast(([at]) => t >= at)[1];
+  const active = scenes[name];
+  for (const [key, scene] of Object.entries(scenes)) scene.el.hidden = key !== name;
+  const age = t - active.at;
+  active.glyphs.forEach((glyph, i) => {
+    const p = eased(age, i * .033, .167);
+    glyph.style.opacity = p;
+    glyph.style.filter = `blur(${6 * (1 - p)}px)`;
+  });
+  active.underline.style.transform = `scaleX(${smooth(age, .13, .4)})`;
+
+  // A single rising navy sheet crosses the cut while the question stays registered.
+  const wipe = phase(t, timing.wipe, timing.reply - timing.wipe);
+  const wipeEl = $('wipe');
+  wipeEl.hidden = wipe === 0 || wipe === 1;
+  wipeEl.style.transform = `translateY(${(1 - smooth(wipe, 0, 1)) * 112}%)`;
+
+  switch (name) {
+    case 'hook': {
+      active.el.querySelectorAll('[data-mail]').forEach((card, i) => {
+        const p = i === 0 ? 1 : eased(t, .18 + (i - 1) * .29, .467);
+        const settle = smooth(t, short ? 1.84 : 3.47, .24);
+        const depth = (i === 0 ? 0 : i - 2) * (1 - settle);
+        pose(card, p, `translate(${depth * 12}px,${depth * -29 + (1 - p) * (i === 2 ? 80 : 30)}px)`);
+      });
+      const tally = short ? 1.36 : 1.64;
+      pose(active.get('.mail-count'), eased(t, tally - .16, .16), `translateY(${100 * (1 - smooth(t, 1.9, .24))}px)`);
+      active.get('.count').textContent = count(t - tally);
+      if (!short) pose(active.get('.thought'), eased(t, 2.1, .18));
+      break;
+    }
+    case 'reply': {
+      const converting = t >= timing.reply + .15 && t < timing.reply + .40;
+      active.get('[data-input]').classList.toggle('converting', converting);
+      active.get('[data-input] small').textContent = converting ? '変換中' : '未送信';
+      const draft = active.get('.draft');
+      pose(draft, t < timing.answer ? 0 : 1);
+      active.el.querySelectorAll('.answer-line').forEach((line, i) => clip(line, eased(t, timing.answer + i * .05, .233)));
+      drawProof(active, t);
+      if (!short) {
+        const zoom = .15 * smooth(t, timing.proof, .5) + .035 * eased(t, timing.chips[0], .15);
+        pose(active.camera, 1, `scale(${1 + zoom * (1 - smooth(t, 9.50, .5))})`);
+        pose(active.get('.approval'), eased(t, 8.85, .16));
+        drawApproval(active, t);
+      }
+      break;
+    }
+    case 'proof': {
+      drawProof(active, t);
+      drawApproval(active, t);
+      const zoom = .15 * smooth(t, timing.proof, .5) + .035 * eased(t, timing.chips[0], .15);
+      pose(active.camera, 1, `scale(${1 + zoom})`);
+      break;
+    }
+    case 'review':
+      active.el.querySelectorAll('.tile').forEach((tile, i) => {
+        pose(tile, eased(age, .25 + i * .25, .22));
+        tile.classList.toggle('conflict', t >= mismatch);
+      });
+      clip(active.get('.handoff'), eased(t, 14.60, .24));
+      break;
+    case 'phone': {
+      const wave = active.get('.wave');
+      const bars = wave.querySelectorAll('i');
+      bars.forEach((bar, i) => {
+        bar.style.height = `${8 + 57 * Math.sin(i * .76) ** 2 * (1 - .6 * i / bars.length)}px`;
+      });
+      clip(wave, smooth(age, .12, .70));
+      clip(active.get('.draft'), eased(t, 17.3, .25));
+      break;
+    }
+    case 'faq':
+      active.get('.count').textContent = count(age);
+      clip(active.get('.diff'), smooth(t, timing.diff, .45));
+      active.get('.diff-status').textContent = t >= timing.publish ? '反映済み' : '追記案';
+      if (short) pose(active.camera, 1, `scale(${1 + .185 * (1 - smooth(age, 0, .5))})`);
+      break;
+    case 'end': {
+      const wordmark = active.get('.wordmark');
+      const loop = smooth(t, duration - .5, .5);
+      const entry = eased(age, 0, .32);
+      pose(wordmark, entry * (1 - loop), `translateX(${24 * (1 - entry - loop)}px)`);
+      pose(active.get('.loop-inbox'), loop);
+      active.get('path').style.strokeDashoffset = 1 - smooth(age, 0, .72);
+      break;
+    }
   }
-  noticeEls.forEach((el, i) => {
-    const incoming = eased(t, noticeAt[i], .25);
-    const outgoing = accelerate(phase(t, 2.70 + (i % 4) * .047, .51));
-    const direction = i % 2 ? 1 : -1;
-    pose(el, incoming * (1 - outgoing) * .86,
-      `translate(${direction * outgoing * 310}px,${(1 - incoming) * 68 + ((i % 3) - 1) * outgoing * 170}px) rotate(${(i % 5 - 2) * 2 + direction * outgoing * 17}deg)`);
-  });
-  const hookExit = accelerate(phase(t, 1.38, .24));
-  rise($('hook-first'), 1 + hookExit, 1 - hookExit);
-  const nextIn = eased(t, 1.48, .27);
-  rise($('hook-next'), nextIn, nextIn * (1 - phase(t, 2.83, .24)));
-
-  for (const [id, at] of [['problem',3.03],['intro',6.53]]) {
-    rise($(id).firstElementChild, eased(t, at, .49));
-  }
-  drawLogo(0, t, 6.56);
-  rise($('intro').querySelector('p'), eased(t, 7.14, .29));
-
-  [8.5,15,19.5].forEach((at, i) => {
-    rise(featureCopies[i], eased(t, at + .05, .48));
-    const arrived = eased(t, at + .11, .48);
-    const zoom = phase(t, at + .4, [5.2,3.9,4.9][i]);
-    const scale = vertical ? 1 : lerp(1, 1.06, zoom);
-    pose(cameraEls[i], arrived, `translate(${vertical ? 0 : -8 * zoom}px,${(1 - arrived) * 60 - zoom * 8}px) scale(${scale})`);
-  });
-
-  const typed = Math.floor(phase(t, 9.06, 2.04) * letters.length);
-  if (typed !== lastLetter) {
-    letters.forEach((el, i) => { el.style.visibility = i < typed ? 'visible' : 'hidden'; });
-    lastLetter = typed;
-  }
-  marks.forEach((el, i) => {
-    const reveal = eased(t, 11.36 + i * .13, .26);
-    el.style.setProperty('--reveal', reveal);
-    const chip = el.closest('.source').querySelector('.chip');
-    chip.style.transform = `scale(${1 + .15 * Math.sin(Math.PI * phase(t, 11.36 + i * .13, .27))})`;
-    rise(el.closest('.source'), eased(t, 11.18 + i * .06, .24), .33 + .67 * reveal, 12);
-  });
-  const moved = phase(t, pointerAt, clickAt - pointerAt);
-  const action = approve.parentElement;
-  const endX = action.offsetLeft + action.offsetWidth * .93;
-  const endY = action.offsetTop + action.offsetHeight * .53;
-  const shrink = Math.sin(Math.PI * phase(t, clickAt - .08, .20));
-  pose($('pointer'), eased(t, pointerAt, .23) * (1 - phase(t, clickAt + .25, .24)),
-    `translate(${cubic(endX - 72, endX - 48, endX + 16, endX, moved)}px,${cubic(endY - 143, endY - 102, endY - 54, endY, moved)}px) scale(${1 - shrink * .16})`);
-  const ripple = phase(t, clickAt, .29);
-  pose($('ripple'), ripple > 0 ? (1 - ripple) * .9 : 0, `translate(-50%,-50%) scale(${lerp(.4, 4.1, ripple)})`);
-  const approved = eased(t, clickAt + .15, .25);
-  pose(approve, 1 - approved, `scale(${1 - shrink * .035})`);
-  rise(sent, approved, approved, 7);
-
-  rise(warning, eased(t, 15.49, .27));
-  conflicts.forEach((el, i) => {
-    rise(el, eased(t, 15.83 + .06 * i, .26));
-    el.querySelector('em').style.setProperty('--reveal', eased(t, 16.34 + .07 * i, .27));
-  });
-  rise(handoff, eased(t, 17.07, .28));
-
-  pose($('ranking'), 1 - accelerate(phase(t, 21.61, .33)));
-  bars.forEach(({el, fill, value}, i) => {
-    const at = 19.83 + i * .065;
-    rise(el, eased(t, at, .29), eased(t, at, .29), 14);
-    fill.style.transform = `scaleX(${eased(t, at + .08, .55) * value / 14})`;
-  });
-  rise($('proposal'), eased(t, 21.72, .37), eased(t, 21.72, .37), 22);
-  diff.style.setProperty('--reveal', eased(t, 22.06, .27));
-  rise(metric, eased(t, 21.82, .18));
-  const count = lerp(4.2, 2.0, phase(t, countStart, countEnd - countStart)).toFixed(1);
-  if ($('count').textContent !== count) $('count').textContent = count;
-
-  const resultIn = eased(t, 25.03, .48);
-  const resultOut = accelerate(phase(t, 27.11, .37));
-  rise($('result'), resultIn + resultOut, resultIn * (1 - resultOut));
-  rise(document.querySelector('.result-tail'), eased(t, 25.43, .40));
-  rise($('cta'), eased(t, 27.27, .51));
-  drawLogo(1, t, 27.34);
 }
-window.render = render;
+
+const score = buildScore(duration, timing, rests);
+let narration;
+const ready = Promise.all([prepareFonts(), loadNarration(duration, starts)]).then(([, clips]) => {
+  narration = clips;
+  fit();
+});
+
+async function prepareFonts() {
+  const fonts = [
+    '600 80px "Video Mincho", "Hiragino Mincho ProN", serif',
+    '600 52px "Video Sans", "Hiragino Sans", sans-serif',
+    '300 30px "Video Sans", "Hiragino Sans", sans-serif',
+    '600 48px "Inter", "Video Sans", "Hiragino Sans", sans-serif'
+  ];
+  await Promise.all(fonts.map(font => document.fonts.load(font)));
+  await document.fonts.ready;
+  for (const font of fonts) {
+    if (!document.fonts.check(font)) throw new Error(`フォントを読み込めませんでした — ${font}`);
+  }
+}
+
+const renders = new Map();
+async function renderAudio(sampleRate = 48000) {
+  await ready;
+  if (!renders.has(sampleRate)) {
+    const context = new OfflineAudioContext(2, Math.round(duration * sampleRate), sampleRate);
+    synthesize(context, context.destination, score, narration, 0, duration, rests);
+    renders.set(sampleRate, context.startRendering());
+  }
+  return renders.get(sampleRate);
+}
+window.AnswerLoopVideo = {
+  duration, fps:30, width, height, ready, renderFrame, renderAudio,
+  async audioWavBase64(sampleRate = 48000) { return wavBase64(await renderAudio(sampleRate)); }
+};
+window.render = renderFrame;
 
 let current = frame ? clamp(Number(params.get('t')) || 0, 0, duration) : 0;
 let playing = false;
@@ -232,136 +288,76 @@ let capture = null;
 let requestingCapture = false;
 let audio;
 let soundRun;
+let soundRequest = 0;
 
-const cues = [
-  ...noticeAt.map((t,i) => [t,'notice',i]),
-  [clickAt,'click'], [clickAt + .11,'send'], [clickAt + .27,'approved'], [15.49,'warning'],
-  ...countTimes.map(t => [t,'tick']), [27.49,'logo']
-];
 function unlockAudio() {
-  const Audio = window.AudioContext || window.webkitAudioContext;
-  if (!Audio) return;
-  if (!audio) {
-    const context = new Audio();
-    const master = context.createGain();
-    const output = context.createMediaStreamDestination();
-    master.gain.value = muted ? 0 : 1;
-    master.connect(context.destination);
-    master.connect(output);
-    const buffer = context.createBuffer(1, context.sampleRate, context.sampleRate);
-    const samples = buffer.getChannelData(0);
-    let seed = 2026;
-    for (let i = 0; i < samples.length; i++) {
-      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-      samples[i] = seed / 2147483648 - 1;
+  try {
+    if (!audio) {
+      const context = new AudioContext();
+      const master = context.createGain();
+      const output = context.createMediaStreamDestination();
+      master.gain.value = muted ? 0 : 1;
+      master.connect(context.destination);
+      master.connect(output);
+      audio = {context, master, output};
     }
-    audio = { context, master, output, buffer };
+    return audio.context.resume().catch(() => {});
+  } catch {
+    return undefined;
   }
-  return audio.context.resume().catch(() => {});
 }
+
 function stopSound() {
-  if (!soundRun) return;
-  soundRun.bus.disconnect();
-  soundRun.sources.forEach(source => source.stop());
-  soundRun = null;
+  soundRequest++;
+  if (soundRun) {
+    soundRun.disconnect();
+    if (soundRun instanceof AudioBufferSourceNode) soundRun.stop();
+    soundRun = null;
+  }
 }
-function scheduleSound(offset, delay = .018) {
+
+function scheduleSound(offset) {
   stopSound();
-  if (!audio || audio.context.state !== 'running' || offset >= duration) return;
-  const { context, master, buffer } = audio;
-  const origin = context.currentTime + delay - offset;
-  const bus = context.createGain();
-  const music = context.createGain();
-  music.gain.value = .126;
-  music.connect(bus);
-  bus.connect(master);
-  const sources = [];
-  soundRun = { bus, sources };
-
-  function voice({at, length, volume, from, to = from, wave = 'sine', filter, attack = .01, output = bus}) {
-    const start = origin + at;
-    const end = Math.min(start + length, origin + duration);
-    if (start < context.currentTime || end - start < .012) return;
-    const envelope = context.createGain();
-    const noise = wave === 'noise';
-    const source = noise ? context.createBufferSource() : context.createOscillator();
-    if (noise) source.buffer = buffer;
-    else {
-      source.type = wave;
-      source.frequency.setValueAtTime(from, start);
-      if (from !== to) source.frequency.exponentialRampToValueAtTime(to, end);
-    }
-    if (filter) {
-      const eq = context.createBiquadFilter();
-      eq.type = 'bandpass';
-      eq.frequency.value = filter;
-      eq.Q.value = .85;
-      source.connect(eq);
-      eq.connect(envelope);
-    } else source.connect(envelope);
-    envelope.connect(output);
-    envelope.gain.setValueAtTime(.0001, start);
-    envelope.gain.linearRampToValueAtTime(volume, Math.min(start + attack, end - .005));
-    envelope.gain.exponentialRampToValueAtTime(.0001, end);
-    source.start(start);
-    source.stop(end);
-    sources.push(source);
+  if (audio?.context.state !== 'running' || offset >= duration) return;
+  const {context, master} = audio;
+  if (offset === 0) {
+    const output = context.createGain();
+    output.connect(master);
+    const startAt = context.currentTime + .035;
+    synthesize(context, output, score, narration, startAt, duration, rests);
+    startedAt = performance.now() + (startAt - context.currentTime) * 1000;
+    soundRun = output;
+    return;
   }
-
-  const chords = [[130.81,196,261.63,329.63],[110,164.81,261.63,329.63],[87.31,174.61,220,261.63],[98,196,246.94,293.66]];
-  for (let beat = 0; beat < 50; beat++) {
-    const at = beat * .6;
-    if (at >= 28.8) break;
-    if (beat % 4 === 0 || (at >= offset && at - offset < .6)) {
-      chords[Math.floor(beat / 4) % chords.length].forEach((from, i) => {
-        voice({ at, from, wave:i === 0 ? 'sine' : 'triangle', length:2.56, attack:.40, volume:i === 0 ? .22 : .12, output:music });
-      });
-    }
-    if (beat % 2 === 0) voice({at, from:93, to:42, length:.20, volume:.42, output:music});
-    voice({at:at + .30, wave:'noise', filter:7600, length:.058, volume:.12, attack:.004, output:music});
-  }
-
-  const tone = (at, from, length, volume, wave = 'sine', to = from) => voice({at,from,to,length,volume,wave});
-  const noise = (at, filter, length, volume) => voice({at,filter,length,volume,wave:'noise',attack:.004});
-  for (const [at, type, index] of cues) {
-    if (at < offset) continue;
-    switch (type) {
-      case 'notice': tone(at, [660,784,880,740][index % 4], .12, .044); break;
-      case 'click': noise(at, 2900, .052, .044); break;
-      case 'send': voice({at,wave:'noise',filter:1600,length:.23,attack:.045,volume:.088}); break;
-      case 'approved': tone(at, 587.33, .22, .067); tone(at + .11, 783.99, .37, .078); break;
-      case 'warning': tone(at, 261.63, .29, .074, 'sine', 196); break;
-      case 'tick': tone(at, 620, .049, .035, 'triangle', 510); break;
-      case 'logo':
-        [392,523.25,659.25].forEach((n,i) => tone(at + i * .14,n,.62,.075));
-        break;
-    }
-  }
-  for (let i = 0; i <= 300; i++) {
-    const t = offset + i / 10;
-    if (t > duration) break;
-    const dip = cues.reduce((strength, [at]) => Math.max(strength, clamp(1 - Math.abs(t - at - .03) / .17)), 0);
-    const fade = 1 - phase(t, 28.55, 1.45);
-    music.gain.linearRampToValueAtTime(.126 * (1 - .35 * dip) * fade, origin + t);
-  }
+  // A seek must retain the in-flight filter, pad and compressor tails.
+  const request = soundRequest;
+  renderAudio(context.sampleRate).then(buffer => {
+    if (request !== soundRequest || !playing) return;
+    const position = (performance.now() - startedAt) / 1000;
+    if (position >= duration) return;
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(master);
+    source.start(0, position);
+    soundRun = source;
+  }).catch(() => {});
 }
-
 function syncControls() {
   $('seek').value = current;
-  $('time').value = current.toFixed(2).padStart(5, '0') + ' / 30';
+  $('time').value = current.toFixed(2).padStart(5, '0') + ' / ' + duration;
   $('play').textContent = playing ? '一時停止' : '再生';
   $('mute').textContent = muted ? '音 OFF' : '音 ON';
   $('mute').setAttribute('aria-pressed', String(muted));
-  poster.hidden = !embed || playing || frame || Boolean(capture);
+  poster.hidden = !embed || exporting || playing || frame || Boolean(capture);
   const ended = current >= duration;
-  const label = ended ? 'リプレイ' : '再生 0:30';
+  const label = ended ? 'リプレイ' : `再生 0:${duration}`;
   if ($('play-label').textContent !== label || !playCircle.firstChild) {
     $('play-label').textContent = label;
     playCircle.innerHTML = ended ? replayIcon : playIcon;
   }
 }
 function paint() {
-  render(current);
+  renderFrame(current);
   syncControls();
 }
 function halt() {
@@ -378,30 +374,31 @@ function advance(now) {
     if (capture?.recorder.state === 'recording') capture.recorder.stop();
   } else animation = requestAnimationFrame(advance);
 }
-function start({ reset = false, gesture = false } = {}) {
+function start({ reset = false } = {}) {
+  if (!narration) return;
   cancelAnimationFrame(animation);
   if (reset || current >= duration) current = 0;
   startedAt = performance.now() - current * 1000;
   playing = true;
   paint();
   scheduleSound(current);
-  if (gesture && (!audio || audio.context.state !== 'running')) {
-    unlockAudio()?.then(() => { if (playing && !soundRun) scheduleSound(current); });
-  }
   animation = requestAnimationFrame(advance);
+}
+function startFromGesture(reset = false) {
+  const resumed = unlockAudio();
+  if (!resumed || audio.context.state === 'running') start({reset});
+  else resumed.then(() => { if (!playing && !capture && !requestingCapture) start({reset}); });
 }
 function togglePlay() {
   if (capture || requestingCapture) return;
-  const resumed = unlockAudio();
   if (playing) {
     current = clamp((performance.now() - startedAt) / 1000, 0, duration);
     halt();
     paint();
-  } else start({gesture:true});
-  resumed?.then(() => { if (playing && !soundRun) scheduleSound(current); });
+  } else startFromGesture();
 }
 function replay() {
-  if (!capture && !requestingCapture) start({reset:true,gesture:true});
+  if (!capture && !requestingCapture) startFromGesture(true);
 }
 function toggleMute() {
   if (capture || requestingCapture) return;
@@ -423,6 +420,8 @@ $('seek').oninput = event => {
   paint();
 };
 document.addEventListener('keydown', event => {
+  if (exporting || frame) return;
+
   if (event.repeat || event.metaKey || event.ctrlKey || event.altKey ||
     event.target.closest?.('textarea, select, [contenteditable], input:not([type=range])')) return;
   if (event.code === 'Space' && !event.target.closest?.('button, a')) {
@@ -437,8 +436,6 @@ document.addEventListener('pointerdown', event => {
     unlockAudio()?.then(() => { if (playing && !soundRun) scheduleSound(current); });
   }
 });
-paint();
-if (!frame && !embed && params.get('autoplay') === '1') start();
 
 const recordButton = $('record');
 const status = $('status');
@@ -449,7 +446,7 @@ function downloadVideo(chunks, type) {
   const url = URL.createObjectURL(new Blob(chunks, {type}));
   const link = document.createElement('a');
   link.href = url;
-  link.download = `answerloop_${vertical ? 'vertical' : 'horizontal'}.${extension}`;
+  link.download = `answerloop_${duration}s_${vertical ? 'vertical' : 'horizontal'}.${extension}`;
   document.body.append(link);
   link.click();
   link.remove();
@@ -470,10 +467,20 @@ function closeCapture(session, error) {
   status.textContent = complete ? '録画を書き出しました。' : '録画が中断されたため、ファイルは保存されませんでした。';
 }
 
-recordButton.disabled = !supportedCapture;
+const playbackButtons = [$('play'), $('replay'), overlay, $('seek')];
+playbackButtons.forEach(button => { button.disabled = true; });
+recordButton.disabled = true;
+ready.then(() => {
+  playbackButtons.forEach(button => { button.disabled = false; });
+  recordButton.disabled = !supportedCapture;
+}, error => {
+  status.textContent = error.message;
+  $('play-label').textContent = error.message;
+  overlay.title = error.message;
+});
 if (!supportedCapture) status.textContent = 'このブラウザまたは接続先ではタブ録画を利用できません。';
 recordButton.onclick = async () => {
-  if (!supportedCapture || capture || requestingCapture) return;
+  if (!narration || !supportedCapture || capture || requestingCapture) return;
   requestingCapture = true;
   recordButton.disabled = true;
   status.textContent = '';
@@ -534,3 +541,8 @@ recordButton.onclick = async () => {
     recordButton.disabled = false;
   }
 };
+
+paint();
+if (!exporting && !frame && !embed && params.get('autoplay') === '1') {
+  ready.then(() => start(), () => {});
+}

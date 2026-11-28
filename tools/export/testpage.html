@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>AnswerLoop export test</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #10233a; color: #fff; font: bold 20vmin system-ui; }
+  main { height: 100vh; display: grid; place-items: center; }
+  #progress { position: fixed; height: 2vh; bottom: 0; left: 0; width: 100%;
+    transform-origin: left; background: #61ebc5; }
+</style>
+<main id="counter">0</main>
+<div id="progress"></div>
+<script>
+  const portrait = new URLSearchParams(location.search).get("format") === "vertical";
+  const duration = 2;
+  const fps = 30;
+  const counter = document.querySelector("#counter");
+  const progress = document.querySelector("#progress");
+
+  window.AnswerLoopVideo = {
+    duration, fps, width: portrait ? 1080 : 1920, height: portrait ? 1920 : 1080,
+    ready: document.fonts.ready,
+    renderFrame(t) {
+      counter.textContent = Math.round(t * fps);
+      progress.style.transform = `scaleX(${(Math.round(t * fps) + 1) / (duration * fps)})`;
+    },
+    async audioWavBase64(sampleRate) {
+      const channels = 2;
+      const blockSize = channels * 2;
+      const samples = sampleRate * duration;
+      const wav = new Uint8Array(44 + samples * blockSize);
+      const view = new DataView(wav.buffer);
+      const tag = (offset, text) => wav.set(new TextEncoder().encode(text), offset);
+      const u32 = (offset, value) => view.setUint32(offset, value, true);
+      const u16 = (offset, value) => view.setUint16(offset, value, true);
+      tag(0, "RIFF"); u32(4, wav.length - 8); tag(8, "WAVE");
+      tag(12, "fmt "); u32(16, 16); u16(20, 1); u16(22, channels);
+      u32(24, sampleRate); u32(28, sampleRate * blockSize);
+      u16(32, blockSize); u16(34, 16); tag(36, "data"); u32(40, samples * blockSize);
+      for (let i = 0; i < samples; i++) {
+        const time = i / sampleRate;
+        const beat = time % 1;
+        const envelope = Math.max(0, Math.min(1, beat / .01, (.2 - beat) / .03));
+        const value = 10000 * envelope * Math.sin(2 * Math.PI * 880 * time);
+        for (let channel = 0; channel < channels; channel++) {
+          view.setInt16(44 + i * blockSize + channel * 2, value, true);
+        }
+      }
+      const parts = [];
+      for (let i = 0; i < wav.length; i += 8192) {
+        parts.push(String.fromCharCode(...wav.subarray(i, i + 8192)));
+      }
+      return btoa(parts.join(""));
+    }
+  };
+</script>
+</html>

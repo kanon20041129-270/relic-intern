@@ -35,14 +35,20 @@ const historical = [
 ];
 
 const icons = {
+  email: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/>',
+  form: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8m-8 4h8m-8 4h4"/>',
+  chat: '<path d="M20 11a8 8 0 0 1-8 8H4l1.5-4A8 8 0 1 1 20 11Z"/><path d="M8 11h8"/>',
+  phone: '<path d="M7 4h3l1.5 4-2.3 2a13 13 0 0 0 4.8 4.8l2-2.3 4 1.5v3a2 2 0 0 1-2.2 2A16 16 0 0 1 5 6.2 2 2 0 0 1 7 4Z"/>',
+  channels: '<circle cx="6" cy="12" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><path d="m8 11 8-4m-8 6 8 4"/>',
   inbox: '<path d="M3 12l3-7h12l3 7v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 12h5l2 3h4l2-3h5"/>',
   review: '<circle cx="12" cy="12" r="8"/><path d="M12 8v5m0 3h.01"/>',
   insights: '<path d="M4 19h16M7 15v-4m5 4V7m5 8V4"/>',
   knowledge: '<path d="M12 6c-2-2-5-2-8-1v13c3-1 6-1 8 1 2-2 5-2 8-1V5c-3-1-6-1-8 1v13"/>'
 };
 
-const navigation = [["inbox","受信箱"],["review","要確認"],["insights","インサイト"],["knowledge","ナレッジ"]];
-const guide = ["回答案を承認", "要確認を確認", "追記候補を見る"];
+const icon = (name, size = 17, label = "") => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" ${label ? 'role="img" aria-label="' + label + '"' : 'aria-hidden="true"'}>${label ? '<title>' + label + '</title>' : ''}${icons[name]}</svg>`;
+const navigation = [["inbox","受信箱"],["review","要確認"],["channels","チャネル"],["insights","インサイト"],["knowledge","ナレッジ"]];
+const guide = ["チャットで即答", "電話（模擬）", "要確認を人へ", "追記候補を承認"];
 const draftPricing = "お問い合わせありがとうございます。ユーザーを追加した場合、招待したユーザーが参加した時点で課金対象となり[K3]、追加日から月末までの日割り料金を次回のご請求に加算いたします[K1][K2]。";
 const draftImport = "お問い合わせありがとうございます。タスクはCSV（UTF-8）で最大5,000件まで一括取り込み可能です[K6]。";
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
@@ -50,6 +56,7 @@ const params = new URLSearchParams(location.search);
 const intro = Number(params.get("step"));
 const embedded = params.get("embed") === "1";
 let tickets, knowledge, page, selected, step, completed, generation, ticketId;
+let inboxFilter, proposalApproved;
 let displayed = [86, 100, 7.6];
 let metricFrame, toastTimer, audio;
 const renderedRows = new WeakMap();
@@ -105,7 +112,7 @@ function parseCSV(raw) {
 
 function classify(subject, body) {
   const text = subject + "\n" + body;
-  if (/請求書[\sでの]*払/.test(text)) {
+  if (isInvoiceQuestion(text.replace(/\s/g, ""))) {
     const confirmed = knowledge.findLast((item) => item.resolvesInvoice);
     return confirmed
       ? { category:"お金回り", status:"draft", response:`${confirmed.quote}[${confirmed.id}]`, refs:[confirmed.id] }
@@ -121,15 +128,15 @@ function classify(subject, body) {
     : /ログイン|パスワード|アカウント/.test(text) ? "会員情報"
     : /料金|請求|領収書|課金/.test(text) ? "お金回り"
     : /仕様|設定|機能/.test(text) ? "プロダクト仕様" : "その他";
-  const confirmed = knowledge.findLast((item) => item.matchSubject === subject.trim());
+  const confirmed = knowledge.findLast((item) => item.matchSubject && normalizeQuestion(item.matchSubject) === normalizeQuestion(subject));
   if (confirmed) return { category, status:"draft", response:`${confirmed.quote}[${confirmed.id}]`, refs:[confirmed.id] };
   return { category, status:"review", refs:[] };
 }
 
-function loadRows(rows, animate = true) {
-  const batch = rows.map(([sender, subject, body]) => ({
+function loadRows(rows, animate = true, fixture = false) {
+  const batch = rows.map(([sender, subject, body], index) => ({
     sender, subject, body, id: ++ticketId, ...classify(subject, body),
-    pending: animate, visible: !animate
+    channel:fixture && index % 3 === 2 ? "form" : "email", sample:fixture, pending: animate, visible: !animate
   }));
   tickets.push(...batch);
   if (!selected) selected = batch[0].id;
@@ -144,6 +151,7 @@ function loadRows(rows, animate = true) {
       if (current !== generation) return;
       if (ticket.visible) return;
       ticket.visible = true;
+      if (page === "insights") renderBreakdown();
       if (page === "inbox" || page === "review") renderList(ticket.id);
       renderNav();
     }, delay);
@@ -151,6 +159,7 @@ function loadRows(rows, animate = true) {
       if (current !== generation) return;
       if (!ticket.pending) return;
       ticket.pending = false;
+      if (page === "insights") renderBreakdown();
       if (page === "inbox" || page === "review") {
         renderList();
         if (selected === ticket.id) renderDetail();
@@ -189,29 +198,41 @@ function render() {
   renderNav();
   renderGuide();
   const main = $("#main");
+  if (page === "channels") { renderChannels(); return; }
   if (page === "insights") { renderInsights(); return; }
   if (page === "knowledge") { renderKnowledge(); return; }
   const review = page === "review";
   const title = review ? "要確認" : "受信箱";
+  const filters = review ? "" : segments(statusLabels, inboxFilter, "filter");
   if (!tickets.length && !review) {
-    main.innerHTML = heading(title, "根拠付きの回答案") + `<section class="card empty"><div>
+    main.innerHTML = heading(title, "根拠付きの回答案") + filters + `<section class="card empty"><div>
       <h2>受信箱は空です</h2><p class="muted">サンプルCSVから問い合わせを取り込めます。</p>
       <div class="actions">${button("sample","問い合わせCSVを取り込む",true)}${button("file","CSVファイルを選択")}</div>
     </div></section>`;
     return;
   }
-  main.innerHTML = heading(title, review ? "要確認は人へ" : "根拠付きの回答案", button("file","CSVファイルを選択")) + `
+  main.innerHTML = heading(title, review ? "要確認は人へ" : "根拠付きの回答案", button("file","CSVファイルを選択")) + filters + `
     <div class="columns"><section class="card" aria-label="問い合わせ一覧"><div class="card-title"><h3>問い合わせ一覧</h3><small id="list-count"></small></div><div class="list"></div></section>
     <section class="card" id="detail" aria-label="問い合わせ詳細"></section></div>`;
   renderList();
   renderDetail();
 }
 
+function segments(labels, current, type) {
+  return `<div class="segments" aria-label="受信箱の絞り込み">${Object.entries(labels).map(([key,label]) =>
+    `<button data-${type}="${key}" aria-pressed="${key === current}">${label}</button>`).join("")}</div>`;
+}
+
+function visibleTickets() {
+  return tickets.filter((ticket) => ticket.visible && (page === "review" ? !ticket.pending && ticket.status === "review"
+    : inboxFilter === "all" || (!ticket.pending && ticket.status === inboxFilter)));
+}
+
 function renderList(entering) {
   const list = $(".list");
   if (!list) return;
   const focused = document.activeElement?.dataset.ticket;
-  const visible = tickets.filter((ticket) => ticket.visible && (page === "inbox" || (!ticket.pending && ticket.status === "review")));
+  const visible = visibleTickets();
   $("#list-count").textContent = `${visible.length}件`;
   const existing = new Map(Array.from(list.children, (row) => [Number(row.dataset.ticket), row]));
   if (!visible.length) {
@@ -224,11 +245,12 @@ function renderList(entering) {
   visible.forEach((ticket, index) => {
     const state = ticket.pending ? badge("根拠を検索中","searching")
       : ticket.sending ? badge("送信中","blue")
+      : ticket.status === "ai" ? badge("AI解決","green")
       : ticket.status === "sent" ? badge("送信済み","green")
       : ticket.status === "review" ? badge("要確認","orange") : badge("回答案あり","blue");
     const row = existing.get(ticket.id) || document.createElement("button");
     const content = `
-      <span class="ticket-top">${badge(escape(ticket.category))}<span class="sender">${escape(ticket.sender)}</span></span>
+      <span class="ticket-top">${icon(ticket.channel,17,channelLabels[ticket.channel])}${badge(escape(ticket.category))}<span class="sender">${escape(ticket.sender)}</span></span>
       <span class="ticket-title"><span class="subject">${escape(ticket.subject)}</span>${state}</span>
     `;
     if (!existing.has(ticket.id)) {
@@ -249,12 +271,12 @@ function renderList(entering) {
 function renderDetail() {
   const detail = $("#detail");
   if (!detail) return;
-  const ticket = tickets.find((item) => item.id === selected);
+  const ticket = visibleTickets().find((item) => item.id === selected);
   if (!ticket) {
     detail.innerHTML = '<div class="panel muted">問い合わせを選択してください。</div>';
     return;
   }
-  detail.innerHTML = `<div class="card-title"><div><small>${escape(ticket.sender)}</small><h2>${escape(ticket.subject)}</h2></div>${ticket.status === "sent" ? badge("送信済み","green") : ""}</div>
+  detail.innerHTML = `<div class="card-title"><div><small>${escape(ticket.sender)}</small><h2>${escape(ticket.subject)}</h2></div>${ticket.status === "sent" ? badge("送信済み","green") : ticket.status === "ai" ? badge("AI解決","green") : ""}</div>
     <div class="detail"><div><h3>問い合わせ本文</h3><p class="message">${escape(ticket.body)}</p></div>
     ${ticket.pending ? '<div class="draft searching" role="status">根拠を検索中</div>' : ticket.status === "review" ? reviewContent(ticket) : draftContent(ticket)}</div>`;
 }
@@ -271,7 +293,7 @@ function draftContent(ticket) {
     return `<div class="source" id="source-${id}"><strong>${id} · ${escape(item.title)}</strong><span>${escape(quote)}</span></div>`;
   }).join("");
   const editor = `<label for="edit-text">回答案を編集</label><textarea id="edit-text">${escape(ticket.response)}</textarea><div class="actions">${button("save","編集を保存",true)}${button("cancel-edit","キャンセル")}</div>`;
-  return `<div class="draft"><div class="draft-head"><h3>${ticket.status === "sent" ? "送信した回答" : "AI回答案"} ${badge("AI生成","blue")}</h3><small>信頼度 <strong>高</strong></small></div>
+  return `<div class="draft"><div class="draft-head"><h3>${ticket.status === "ai" ? "承認済みナレッジから回答" : (ticket.status === "sent" ? "送信した回答" : "AI回答案") + " " + badge("AI生成","blue")}</h3><small>信頼度 <strong>高</strong></small></div>
     ${ticket.editing ? editor : `<p class="message">${response}</p>`}</div>
     <div><div class="evidence-head"><h3>根拠</h3><small>${ticket.refs.length}件</small></div><div class="evidence">${sources}</div></div>
     ${ticket.sending ? '<div class="actions"><button class="primary enter" disabled>送信中…</button></div>'
@@ -286,15 +308,35 @@ function reviewContent(ticket) {
     <div><h3>K5 · 社内仕様メモ（2026-11）</h3><p>請求書払いは<mark>デザイン・実装中。提供開始は未定。</mark></p></div></div>` : "";
   const checked = ticket.conflict ? "K4 料金ページ、K5 社内仕様メモ"
     : ticket.refs.length ? ticket.refs.join("、") : "該当資料なし";
-  const editor = `<div class="draft"><label for="confirmed">担当者が確定した回答</label><textarea id="confirmed" placeholder="確認した回答を入力"></textarea><div class="actions">${button("confirm","ナレッジに追加",true)}${button("cancel-confirm","キャンセル")}</div></div>`;
+  const editor = `<div class="draft"><label for="confirmed">担当者が確定した回答</label><textarea id="confirmed" placeholder="確認した回答を入力"></textarea><div class="actions">${button("confirm","確定した回答をナレッジに追加",true)}${button("cancel-confirm","キャンセル")}</div></div>`;
   return `<p class="alert">${alert}</p>${comparison}
-    <div class="handoff"><h3>担当者への引き継ぎメモ</h3><dl>
-      <dt>質問の要約</dt><dd>${ticket.conflict ? "Proプランで請求書払いを利用できるか。" : escape(ticket.subject)}</dd>
+    <div class="handoff"><h3>${ticket.channel === "phone" ? "通話要約 · 担当者への引き継ぎ" : "担当者への引き継ぎメモ"}</h3><dl>
+      <dt>質問の要約</dt><dd>${ticket.conflict ? "請求書払いを利用できるか。" : escape(ticket.subject)}</dd>
       <dt>確認済みの資料</dt><dd>${checked}</dd><dt>確認すべき人</dt><dd>${ticket.conflict ? "経理 / プロダクト担当" : "プロダクト担当"}</dd>
     </dl></div>
-    ${ticket.added ? '<p class="badge green">次回から自動で回答案を作れます</p>' : ""}
+    ${ticket.added ? '<p class="badge green">次回からチャットと電話でも即答できます</p>' : ""}
     ${ticket.confirming ? editor : `<div class="actions">${ticket.assigned ? badge(`${ticket.conflict ? "経理 / " : ""}プロダクト担当に割り当て済み`,"green") : button("assign","担当者に割り当て",true)}
-    ${ticket.added ? button("knowledge","ナレッジを見る") : button("add","確定した回答をナレッジに追加")}</div>`}`;
+    ${ticket.added ? button("knowledge","ナレッジを見る") + button("try-answer","チャットで同じ質問を試す") : button("add","確定した回答をナレッジに追加")}</div>`}`;
+}
+
+const monthlyDemoCounts = {
+  channel: {email:26, form:9, chat:18, phone:7},
+  status: {ai:31, draft:6, review:3, sent:20}
+};
+
+function renderBreakdown() {
+  const breakdown = (labels, field) => {
+    const counts = {...monthlyDemoCounts[field]};
+    for (const ticket of tickets) {
+      if (ticket.visible && (field !== "status" || !ticket.pending)) counts[ticket[field]]++;
+    }
+    const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+    return Object.entries(counts).map(([key,count]) => `
+      <li><div class="rank-label"><span>${labels[key]}</span><strong>${count}件</strong></div>
+      <div class="track" aria-hidden="true"><div class="bar" style="width:${count / total * 100}%"></div></div></li>`).join("");
+  };
+  $(".breakdown").innerHTML = `<div><h3>チャネル別件数</h3><ul>${breakdown(channelLabels,"channel")}</ul></div>
+    <div><h3>対応状況</h3><ul>${breakdown({...statusLabels, sent:"送信済み"},"status")}</ul></div>`;
 }
 
 function renderInsights() {
@@ -303,12 +345,15 @@ function renderInsights() {
   $("#main").innerHTML = heading("インサイト","FAQ改善ループ") + `<div class="columns insights">
     <section class="card panel enter"><h2>今月の頻出質問</h2><ol class="ranking">${ranking.map(([label,count],i) => `
     <li><div class="rank-label"><strong>${label}</strong><span>${count}件</span></div>
-    <div class="track" aria-hidden="true"><div class="bar" style="width:${count / 14 * 100}%;animation-delay:${i * 45}ms"></div></div></li>`).join("")}</ol></section>
-    <section class="card panel enter"><div><p class="section-label">追記候補</p><h2>料金ページに「ユーザーを追加したときの料金」節を追加</h2></div>
+    <div class="track" aria-hidden="true"><div class="bar" style="width:${count / 14 * 100}%;animation-delay:${i * 45}ms"></div></div></li>`).join("")}</ol>
+    <div><small>今月の累計（架空データ）</small><div class="breakdown"></div></div></section>
+    <section class="card panel enter"><div><p class="section-label">追記候補</p><h2>料金ページに<wbr>「ユーザーを<wbr>追加したときの<wbr>料金」節を追加</h2></div>
     <div><p class="section-label">差分プレビュー</p><div class="diff"><strong>＋ ユーザーを追加したときの料金</strong><p>招待したユーザーが参加した時点で課金対象になります。参加日から月末までの日割り料金を次回のご請求に加算します。</p></div></div>
     <details><summary>根拠の問い合わせ 14件を見る</summary><ol>${related.map((subject) => `<li>${escape(subject)}</li>`).join("")}</ol></details>
-    <div class="effect"><h3>ページ改善後の効果測定</h3><small>ページ閲覧1,000回あたりの該当問い合わせ</small><div class="effect-values">4.2件 <span aria-hidden="true">→</span> <span class="badge green">目標</span> 2.0件</div></div>
+    <div class="actions">${proposalApproved ? badge("承認済み","green") : button("approve-proposal","追記案を承認",true)}</div>
+    <div class="effect"><h3>ページ改善後の効果測定</h3><p class="muted">架空データによる計測例</p><small>ページ閲覧1,000回あたりの該当問い合わせ</small><div class="effect-values">4.2件 <span aria-hidden="true">→</span> <span class="badge green">目標</span> 2.0件</div></div>
     </section></div>`;
+  renderBreakdown();
 }
 
 function renderKnowledge() {
@@ -318,40 +363,37 @@ function renderKnowledge() {
 }
 
 function changePage(next) {
+  if (page === "channels" && next !== "channels") {
+    stopChannelWork();
+    call.mic = false;
+    call.micStatus = "";
+  }
   page = next;
-  if (page === "inbox" || page === "review") {
-    const eligible = (ticket) => ticket.visible && (page === "inbox" || (!ticket.pending && ticket.status === "review"));
-    if (!tickets.some((ticket) => eligible(ticket) && ticket.id === selected)) {
-      selected = tickets.find(eligible)?.id ?? null;
-    }
-  }
-  if (page === "review") {
-    step = 2;
-    if (selected) completed.add(2);
-  }
-  if (page === "insights") {
-    step = 3;
-    completed.add(3);
+  if ((page === "inbox" || page === "review") && !visibleTickets().some((ticket) => ticket.id === selected)) {
+    selected = visibleTickets()[0]?.id ?? null;
   }
   render();
 }
 
-function goStep(next, keyboard = false) {
+function goStep(next) {
   step = next;
-  if (!tickets.length) loadRows(parseCSV(sample), false);
-  if (next !== 3) {
-    for (const ticket of tickets) {
-      ticket.visible = true;
-      ticket.pending = false;
-    }
+  if (!tickets.some((ticket) => ticket.sample)) loadRows(parseCSV(sample), false, true);
+  if (next === 1) {
+    chooseChannel("chat");
+    typeQuestion(chatSamples[0]);
+  } else if (next === 2) {
+    chooseChannel("phone");
+    startSample(0, true);
+  } else if (next === 3) {
+    const forwarded = tickets.find((ticket) => ticket.channel === "phone" && ticket.status === "review");
+    const result = lookupAnswer(phoneSamples[1], answerIndex);
+    selected = forwarded?.id ?? (!result.lines ? recordInteraction("phone", phoneSamples[1], result).id : null);
+    changePage("review");
+    if (selected) completed.add(3);
+    renderGuide();
+  } else {
+    changePage("insights");
   }
-  if (next === 2 && keyboard && !completed.has(1) && !tickets.some((ticket) => ticket.sending)) {
-    const first = tickets.find((ticket) => ticket.response === draftPricing && ticket.status === "draft" && !ticket.pending);
-    if (first) approve(first);
-  }
-  if (next === 1) selected = tickets.find((ticket) => ticket.response === draftPricing && !ticket.pending)?.id ?? null;
-  if (next === 2) selected = tickets.find((ticket) => ticket.conflict && ticket.status === "review" && !ticket.pending)?.id ?? null;
-  changePage(["inbox","review","insights"][next - 1]);
 }
 
 function reset() {
@@ -359,6 +401,9 @@ function reset() {
   ticketId = 0;
   tickets = [];
   knowledge = originals.map((item) => ({...item}));
+  resetChannels();
+  inboxFilter = "all";
+  proposalApproved = false;
   selected = null;
   step = 0;
   page = "inbox";
@@ -400,7 +445,7 @@ function play(kind = "click") {
     if (!Audio) return;
     audio ||= new Audio();
     if (audio.state === "suspended") audio.resume().catch(() => {});
-    const notes = kind === "send" ? [520, 720] : [390];
+    const notes = kind === "send" ? [520, 720] : kind === "land" ? [590, 790] : kind === "type" ? [310] : [390];
     notes.forEach((frequency, i) => {
       const oscillator = audio.createOscillator();
       const gain = audio.createGain();
@@ -408,7 +453,7 @@ function play(kind = "click") {
       oscillator.type = "sine";
       oscillator.frequency.value = frequency;
       gain.gain.setValueAtTime(.0001,start);
-      gain.gain.exponentialRampToValueAtTime(kind === "send" ? .04 : .022,start + .009);
+      gain.gain.exponentialRampToValueAtTime(kind === "send" ? .04 : kind === "type" ? .008 : .022,start + .009);
       gain.gain.exponentialRampToValueAtTime(.0001,start + .085);
       oscillator.connect(gain);
       gain.connect(audio.destination);
@@ -430,7 +475,7 @@ function approve(ticket) {
     if (current !== generation) return;
     ticket.sending = false;
     ticket.status = "sent";
-    completed.add(1);
+    if (page === "insights") renderBreakdown();
     play("send");
     renderList();
     if (selected === ticket.id) {
@@ -442,7 +487,7 @@ function approve(ticket) {
     }
     renderGuide();
     updateMetrics();
-    notify("送信しました｜対応時間 1分12秒");
+    notify("送信しました");
   }, reduced.matches ? 0 : 260);
 }
 
@@ -456,15 +501,26 @@ function highlight(chip) {
 
 function action(name) {
   if (name === "sample") {
-    step = 1;
-    loadRows(parseCSV(sample));
+    loadRows(parseCSV(sample), true, true);
     return;
   }
   if (name === "file") { $("#csv").click(); return; }
+  if (name === "approve-proposal") {
+    proposalApproved = true;
+    completed.add(4);
+    play("send");
+    render();
+    notify("追記案を承認しました");
+    return;
+  }
   if (name === "knowledge") { changePage("knowledge"); return; }
   const ticket = tickets.find((item) => item.id === selected);
   if (!ticket) return;
   switch (name) {
+    case "try-answer":
+      chooseChannel("chat");
+      typeQuestion(ticket.subject);
+      return;
     case "send": approve(ticket); return;
     case "edit": ticket.editing = true; break;
     case "cancel-edit": ticket.editing = false; break;
@@ -492,9 +548,10 @@ function action(name) {
         id:`K${knowledge.length + 1}`, title:ticket.subject, type:"担当者の確定回答",
         quote, date:"2026-11-28", conflict:false, resolvesInvoice:ticket.conflict, matchSubject:ticket.subject
       });
+      answerIndex = buildAnswerIndex(knowledge);
       ticket.confirming = false;
       ticket.added = true;
-      notify("次回から自動で回答案を作れます");
+      notify("確定した回答を追加しました");
       break;
     }
   }
@@ -519,9 +576,22 @@ document.addEventListener("click", (event) => {
   const {page: nextPage, step: nextStep, ticket, cite, action: name} = control.dataset;
   if (nextPage) changePage(nextPage);
   if (nextStep) goStep(Number(nextStep));
+  const {channel:nextChannel, filter, question, call:sampleCall, listen:micStart} = control.dataset;
+  if (nextChannel && nextChannel !== channel) {
+    chooseChannel(nextChannel);
+    $(`[data-channel="${nextChannel}"]`).focus();
+  }
+  if (filter) {
+    inboxFilter = filter;
+    changePage("inbox");
+    $(`[data-filter="${filter}"]`).focus();
+  }
+  if (question !== undefined) typeQuestion(chatSamples[Number(question)]);
+  if (sampleCall !== undefined) startSample(Number(sampleCall));
+  if (micStart) listen();
   if (ticket) {
     selected = Number(ticket);
-    if (tickets.find((item) => item.id === selected)?.conflict && page === "review") completed.add(2);
+    if (tickets.find((item) => item.id === selected)?.conflict && page === "review") completed.add(3);
     renderList();
     renderDetail();
     renderGuide();
@@ -552,7 +622,7 @@ $("#csv").addEventListener("change", async (event) => {
   try {
     const rows = parseCSV(new TextDecoder("utf-8",{fatal:true}).decode(await file.arrayBuffer()));
     if (current !== generation) return;
-    step = 1;
+    if (page === "channels") stopChannelWork();
     loadRows(rows);
   } catch (error) {
     if (current === generation) notify(`CSVを取り込めませんでした｜${error.message}`);
@@ -562,10 +632,10 @@ $("#csv").addEventListener("change", async (event) => {
 document.addEventListener("keydown",(event) => {
   if (event.defaultPrevented || event.altKey || event.metaKey || event.ctrlKey ||
       event.target.closest("textarea,input,[contenteditable]") || event.repeat) return;
-  if (event.key === "ArrowRight" && step < 3) {
+  if (event.key === "ArrowRight" && step < 4) {
     event.preventDefault();
     play();
-    goStep(step + 1, true);
+    goStep(step + 1);
   }
   if (event.key.toLowerCase() === "r") {
     event.preventDefault();
@@ -587,4 +657,4 @@ if (embedded) {
 }
 
 reset();
-if ([1,2,3].includes(intro)) goStep(intro);
+if ([1,2,3,4].includes(intro)) goStep(intro);
