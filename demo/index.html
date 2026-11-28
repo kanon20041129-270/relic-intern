@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AnswerLoop | TaskNest</title>
+<link rel="stylesheet" href="./style.css">
+<script defer src="./app.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="identity">
+    <span class="brand"><svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#0E1A33"/><path d="M23 14a7.2 7.2 0 0 0-14-1m14-3v4h-4M9 17a7.2 7.2 0 0 0 11 5l-1-3h3a7 7 0 0 0 1-2" fill="none" stroke="white" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>AnswerLoop</span>
+    <span class="workspace"><strong>TaskNest</strong><small>デモ用の架空データ</small></span>
+  </div>
+  <div class="metrics">
+    <div><small>回答案の承認率</small><strong id="rate">86%</strong></div>
+    <div><small>平均対応時間</small><strong><s>8分</s> <span aria-hidden="true">→</span> <span id="average">1分40秒</span></strong></div>
+    <div><small>今月戻った時間</small><strong id="saved">7.6時間</strong></div>
+  </div>
+  <button id="sound" class="sound" aria-pressed="true">操作音 ON</button>
+</header>
+<div class="shell">
+  <aside class="sidebar">
+    <nav aria-label="メインナビゲーション" id="nav"></nav>
+    <p class="tagline">問い合わせを、<br>返すものから、<br>減らすものへ。</p>
+  </aside>
+  <main id="main"></main>
+</div>
+<aside class="guide" aria-label="デモガイド">
+  <div class="guide-head"><strong>デモガイド</strong><small><kbd>→</kbd> 次へ <kbd>R</kbd> リセット</small></div>
+  <div id="steps"></div>
+</aside>
+<div id="toast" role="status" aria-atomic="true"></div>
+<input type="file" hidden id="csv" accept=".csv,text/csv">
+</body>
+</html>

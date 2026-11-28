@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AnswerLoop | プロモーション</title>
+<link rel="stylesheet" href="style.css">
+<script defer src="engine.js"></script>
+</head>
+<body>
+<main id="viewport" aria-label="AnswerLoop プロモーション動画">
+<div id="stage">
+<section id="hook" class="scene center">
+  <div id="notifications" aria-hidden="true"></div>
+  <h1 class="hook-copy" id="hook-first">また同じ<br>料金の質問。</h1>
+  <h1 class="hook-copy" id="hook-next">前の返信、<br>どこだっけ？</h1>
+</section>
+<section id="problem" class="scene center">
+  <div class="statement"><h2>問い合わせ対応で、<br>一日が終わる。</h2><p>事業担当者が窓口を兼務する、<br class="vertical-only">少人数のSaaS企業</p></div>
+</section>
+<section id="intro" class="scene center">
+  <div class="statement"><div class="brand"></div><p>問い合わせを、返すものから、<br class="vertical-only">減らすものへ。</p></div>
+</section>
+<section id="reply" class="scene feature">
+  <div class="feature-copy"><p class="step">01 <span>根拠付きの回答案</span></p><h2>根拠付きの<br>回答案。<br>承認するだけ。</h2></div>
+  <div class="camera"><article class="app">
+    <header class="app-header"><b>TaskNest</b><span>受信箱</span><small>デモ用の架空データ</small></header>
+    <div class="app-kpis"><span>回答案の承認率 <b>86%</b></span><span>平均対応時間 <b>8分 → 1分40秒</b></span><span>今月戻った時間 <b>7.6時間</b></span></div>
+    <div class="app-body">
+      <p class="category">お金回り <span>株式会社ミナト 佐藤さん</span></p>
+      <h3>追加料金はいつ発生しますか？</h3>
+      <div class="draft"><b>AI回答案</b><div id="draft-text"></div></div>
+      <div class="source-list">
+        <div class="source"><b class="chip">K1</b><div><b>料金ページ · プランと料金</b><br><mark>追加日から月末までを日割りで次回請求に加算</mark></div></div>
+        <div class="source"><b class="chip">K3</b><div><b>FAQ · ユーザーの追加方法</b><br><mark>招待したユーザーが参加した時点で課金対象</mark></div></div>
+      </div>
+      <footer class="app-footer"><span>根拠 K1・K3・K2</span><span class="action"><b id="approve">承認して送信</b><b id="sent">送信済み</b><i id="ripple"></i></span></footer>
+      <svg id="pointer" viewBox="0 0 36 42" aria-hidden="true"><path d="M3 2v34l9-8 6 12 7-4-6-12h13Z" fill="#0B1220" stroke="white" stroke-width="2" stroke-linejoin="round"/></svg>
+    </div>
+  </article></div>
+</section>
+<section id="review" class="scene feature">
+  <div class="feature-copy"><p class="step">02 <span>要確認は人へ</span></p><h2>根拠が食い違えば、<br>AIは答えない。<br>人へ。</h2></div>
+  <div class="camera"><article class="app">
+    <header class="app-header"><b>TaskNest</b><span>受信箱</span><small>デモ用の架空データ</small></header>
+    <div class="app-kpis"><span>回答案の承認率 <b>86%</b></span><span>平均対応時間 <b>8分 → 1分40秒</b></span><span>今月戻った時間 <b>7.6時間</b></span></div>
+    <div class="app-body">
+      <p class="category">お金回り <span>合同会社ノース 田中さん</span></p>
+      <h3>請求書払いはできますか？</h3>
+      <div class="warning"><b>要確認</b>　資料の記載が食い違っています</div>
+      <div class="conflicts">
+        <div><b class="chip">K4</b><strong>料金ページ</strong><p>クレジットカード・<em>請求書払いに対応</em>。</p></div>
+        <div><b class="chip">K5</b><strong>社内仕様メモ</strong><p>請求書払いはデザイン・実装中。<em>提供開始は未定</em>。</p></div>
+      </div>
+      <div class="handoff"><b>担当者への引き継ぎ</b><p>請求書払いの提供状況を、経理・プロダクト担当に確認。</p></div>
+    </div>
+  </article></div>
+</section>
+<section id="insight" class="scene feature">
+  <div class="feature-copy"><p class="step">03 <span>FAQ改善ループ</span></p><h2>同じ質問を、<br>根本から減らす。</h2></div>
+  <div class="camera"><article class="app insight-app">
+    <header class="app-header"><b>TaskNest</b><span>インサイト</span><small>デモ用の架空データ</small></header>
+    <div class="app-kpis"><span>回答案の承認率 <b>86%</b></span><span>平均対応時間 <b>8分 → 1分40秒</b></span><span>今月戻った時間 <b>7.6時間</b></span></div>
+    <div class="app-body">
+      <div id="ranking"><h3>今月の頻出問い合わせ</h3><div id="bars"></div></div>
+      <div id="proposal">
+        <p class="category">追記候補 <span>14件の問い合わせが根拠</span></p>
+        <h3>料金ページに追記</h3>
+        <div class="diff"><b>＋ ユーザーを追加したときの料金</b><p>追加したユーザーが参加すると課金対象になります。追加日から月末までの日割り料金を次回請求に加算します。</p></div>
+        <div class="metric"><span>ページ閲覧1,000回あたりの該当問い合わせ</span><div><b>4.2</b><small>件</small><span class="arrow"> → </span><b id="count">4.2</b><small>件</small><span class="target">目標 2.0件</span></div></div>
+      </div>
+    </div>
+  </article></div>
+</section>
+<section id="ending" class="scene center">
+  <div class="statement" id="result"><p>本人の問い合わせ対応時間</p><h2><span>1日約8時間</span><span class="result-tail">→ <strong>15分未満</strong></span></h2><p>開発者の実体験・本人の概算</p></div>
+  <div class="statement" id="cta"><div class="brand"></div><h2>試験導入の企業を<br class="vertical-only">募集中</h2><p class="price">30日 19,800円で試せます</p></div>
+</section>
+<div id="safe-guide" aria-hidden="true"></div>
+<div id="poster" hidden>
+  <button id="overlay" type="button">
+    <span class="play-circle" aria-hidden="true"></span>
+    <span id="play-label">再生 0:30</span>
+  </button>
+</div>
+</div>
+</main>
+<div id="controls">
+  <div class="control-row">
+    <button type="button" id="play">再生</button>
+    <button type="button" id="replay">リプレイ</button>
+    <label class="scrub"><span class="sr-only">再生位置</span><input id="seek" type="range" min="0" max="30" step=".01" value="0"></label>
+    <output id="time">00.00 / 30</output>
+    <button type="button" id="mute" aria-pressed="false">音 ON</button>
+    <a id="switch">縦版</a>
+    <button type="button" id="record">録画して書き出す</button>
+  </div>
+  <small>録画では共有先にこのタブを選択してください。音は動画から直接合成します。形式はブラウザの録画対応状況で変わります。</small>
+  <span id="status" role="status"></span>
+</div>
+</body>
+</html>
